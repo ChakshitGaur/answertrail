@@ -1,0 +1,30 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: docqa
+      POSTGRES_PASSWORD: docqa
+      POSTGRES_DB: docqa
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "docqa"]
+      interval: 5s
+      retries: 10
+
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DATABASE_URL: postgres://docqa:docqa@db:5432/docqa
+      EMBEDDING_BACKEND: fastembed
+
+volumes:
+  pgdata:

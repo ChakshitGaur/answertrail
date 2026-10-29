@@ -1,0 +1,73 @@
+{
+  "documents": [
+    {
+      "title": "Returns and Refunds",
+      "text": "Customers may return unused items within 45 days of delivery for a full refund to the original payment method. Items returned after 45 days but before 90 days are eligible for store credit only. Refunds are issued within 5 business days after the warehouse inspects the return. Personalised or engraved products cannot be returned unless they arrive damaged. Return shipping is free for defective items; for change-of-mind returns the customer pays a flat 6 dollar label fee, which is deducted from the refund. Gift recipients without a receipt receive store credit at the lowest selling price of the last 60 days. Opened sleeping bags must be returned with the original stuff sack, otherwise a 10 percent restocking fee applies."
+    },
+    {
+      "title": "Shipping",
+      "text": "Standard shipping takes 4 to 7 business days and is free for orders over 75 dollars. Express shipping arrives in 2 business days and costs 18 dollars flat. We ship to the United States, Canada and the United Kingdom; other countries are not supported yet. Orders placed before 2 pm Eastern leave the warehouse the same day. Oversized items such as canoes ship by freight and need a signature on delivery. If a package is lost, we reship at no cost once the carrier confirms the loss, which usually takes 10 days. Tracking numbers are emailed when the parcel is handed to the carrier."
+    },
+    {
+      "title": "Warranty",
+      "text": "All backpacks and tents carry a lifetime warranty against manufacturing defects such as broken zippers or seam failures. Footwear is covered for 12 months. Electronics like headlamps and stoves are covered for 24 months. Normal wear, UV fading and damage from misuse are not covered. To claim, email warranty@northwind.example with photos and the order number; we respond within 2 business days. We choose between repair, replacement or refund. Warranty claims are void if the product was modified or repaired by a third party."
+    },
+    {
+      "title": "Remote Work Policy",
+      "text": "Employees may work remotely up to 3 days per week with manager approval. Core collaboration hours are 10 am to 3 pm local time, during which everyone should be reachable. New hires must work on-site for their first 30 days. The company provides a one-time home office stipend of 500 dollars and pays for internet at 40 dollars per month. Working from another country for more than 14 days requires approval from HR for tax reasons. Equipment such as laptops must be returned within 10 days of leaving the company."
+    },
+    {
+      "title": "Expense Reimbursement",
+      "text": "Submit expense reports within 30 days of the purchase through the finance portal. Receipts are required for any expense above 25 dollars. Meals while travelling are reimbursed up to 60 dollars per day. Flights must be booked at least 14 days in advance in economy class unless the flight exceeds 6 hours. Hotel stays are capped at 220 dollars per night in major cities and 150 dollars elsewhere. Alcohol is not reimbursable. Approved reports are paid on the next Friday payroll run. Expenses over 1,000 dollars need director approval before purchase."
+    },
+    {
+      "title": "Security Policy",
+      "text": "Passwords must be at least 14 characters and are rotated only when a compromise is suspected. All staff must enable multi-factor authentication using a hardware key or authenticator app; SMS codes are not allowed. Laptops use full disk encryption and lock after 5 minutes of inactivity. Report lost devices to the security team within 1 hour. Production database access is granted for 4 hours at a time through a request workflow and is logged. Phishing simulations run monthly, and employees who fail three in a row must retake the training. Customer data may never be copied to personal cloud storage."
+    },
+    {
+      "title": "On-call and Incident Response",
+      "text": "Engineers rotate on-call weekly, handing over every Monday at 10 am. The primary on-call must acknowledge a page within 5 minutes; if not, it escalates to the secondary. Incidents are rated Sev1 to Sev4, and Sev1 means customers cannot check out. For Sev1 the incident commander opens a dedicated channel and posts status updates every 30 minutes. A blameless postmortem is due within 5 business days of resolution. On-call engineers receive a 250 dollar weekly stipend plus a day off after any night page. Runbooks live in the wiki under the operations section."
+    },
+    {
+      "title": "Tent Care Guide",
+      "text": "Never store a tent while damp, because mildew can ruin the coating within weeks. Dry it fully in shade, since prolonged sunlight degrades the nylon. Re-apply a waterproofing spray once a season or after 20 nights of use. Clean with lukewarm water and a soft sponge; detergents strip the water-repellent finish. Seam sealer should be applied to factory seams if you notice leaks after 3 or more years. Keep zippers lubricated with a silicone stick, and never pull on a stuck zipper. Store the tent loosely in a cotton bag rather than tightly packed in its stuff sack."
+    }
+  ],
+  "questions": [
+    {"q": "How long do I have to send something back for my money back?", "evidence": "within 45 days of delivery"},
+    {"q": "Can I get cash back if I return an item two months after it arrived?", "evidence": "store credit only"},
+    {"q": "How fast do I get my refund once the return arrives?", "evidence": "within 5 business days after the warehouse"},
+    {"q": "Who pays for return postage when I just changed my mind?", "evidence": "flat 6 dollar label fee"},
+    {"q": "What happens if I return a sleeping bag without its bag?", "evidence": "10 percent restocking fee"},
+    {"q": "Is express delivery available and what does it cost?", "evidence": "costs 18 dollars flat"},
+    {"q": "Which countries do you deliver to?", "evidence": "united states, canada and the united kingdom"},
+    {"q": "What's the order cutoff for same-day dispatch?", "evidence": "before 2 pm eastern"},
+    {"q": "What do you do if the courier loses my parcel?", "evidence": "we reship at no cost"},
+    {"q": "How are canoes delivered?", "evidence": "ship by freight"},
+    {"q": "Minimum order for free standard delivery?", "evidence": "free for orders over 75 dollars"},
+    {"q": "How long is the guarantee on my tent?", "evidence": "lifetime warranty"},
+    {"q": "How many months are boots covered?", "evidence": "footwear is covered for 12 months"},
+    {"q": "Does the guarantee cover sun fading?", "evidence": "uv fading"},
+    {"q": "How do I start a guarantee claim?", "evidence": "warranty@northwind.example"},
+    {"q": "How many days per week can staff work from home?", "evidence": "up to 3 days per week"},
+    {"q": "What are the hours when everyone must be available?", "evidence": "10 am to 3 pm local time"},
+    {"q": "Is there money to set up my home desk?", "evidence": "home office stipend of 500 dollars"},
+    {"q": "Do I need permission to work abroad for a few weeks?", "evidence": "more than 14 days requires approval"},
+    {"q": "By when must I file my expenses?", "evidence": "within 30 days of the purchase"},
+    {"q": "What's the daily limit for food on business trips?", "evidence": "up to 60 dollars per day"},
+    {"q": "How early must flights be booked?", "evidence": "at least 14 days in advance"},
+    {"q": "Can I expense a beer at dinner?", "evidence": "alcohol is not reimbursable"},
+    {"q": "How long should a password be?", "evidence": "at least 14 characters"},
+    {"q": "Are text message codes acceptable for two-factor login?", "evidence": "sms codes are not allowed"},
+    {"q": "How quickly do I report a stolen laptop?", "evidence": "within 1 hour"},
+    {"q": "How long does production database access last?", "evidence": "4 hours at a time"},
+    {"q": "How soon must the primary engineer respond to a page?", "evidence": "within 5 minutes"},
+    {"q": "What counts as the most severe incident level?", "evidence": "customers cannot check out"},
+    {"q": "How often are updates posted during a major outage?", "evidence": "every 30 minutes"},
+    {"q": "What compensation do on-call staff get?", "evidence": "250 dollar weekly stipend"},
+    {"q": "Why shouldn't I put a wet tent in storage?", "evidence": "mildew can ruin the coating"},
+    {"q": "How often should I re-waterproof?", "evidence": "once a season or after 20 nights"},
+    {"q": "What should I use to wash my tent?", "evidence": "lukewarm water and a soft sponge"},
+    {"q": "How should I keep the tent when not in use, packed tight?", "evidence": "cotton bag"}
+  ]
+}

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  sqlite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r requirements-ml.txt
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: pytest -q
+      - name: UI unit tests
+        run: node --test "tests/js/**/*.test.js"
+      - name: Production static files
+        run: |
+          DJANGO_DEBUG=0 DJANGO_SECRET_KEY=ci-only-not-a-real-secret-key-0000000000000000000000 \
+            python manage.py collectstatic --noinput
+
+  pgvector:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: docqa
+          POSTGRES_PASSWORD: docqa
+          POSTGRES_DB: docqa
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U docqa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://docqa:docqa@localhost:5432/docqa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-ml.txt
+      - run: pytest -q
+      - name: Retrieval eval (neural model on pgvector)
+        run: |
+          python manage.py migrate --noinput
+          python manage.py eval_retrieval --backend fastembed --show-misses

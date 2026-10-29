@@ -1,0 +1,77 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doc Q&amp;A</title>
+  <meta name="description" content="Ask questions about your documents and get answers with cited sources.">
+  <link rel="stylesheet" href="{% static 'docqa/style.css' %}">
+</head>
+<body>
+  <section id="auth" class="auth" hidden>
+    <div class="card">
+      <h1>Doc Q&amp;A</h1>
+      <p class="muted">Upload your documents and ask questions. Every answer cites the passages it came from.</p>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-signin" aria-selected="true">Sign in</button>
+        <button type="button" role="tab" id="tab-register" aria-selected="false">Register</button>
+      </div>
+      <form id="auth-form" novalidate>
+        <label>Username <input id="username" autocomplete="username" required></label>
+        <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+        <p id="auth-error" class="error" role="alert" hidden></p>
+        <button id="auth-submit" class="primary" type="submit">Sign in</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <button id="menu-btn" class="icon-btn menu" type="button" aria-label="Show documents">&#9776;</button>
+      <h1>Doc Q&amp;A</h1>
+      <span class="spacer"></span>
+      <span id="who" class="muted"></span>
+      <button id="theme-btn" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle theme">&#9680;</button>
+      <button id="logout-btn" type="button">Sign out</button>
+    </header>
+
+    <aside id="sidebar" class="sidebar">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload documents">
+        <strong>Drop files here</strong>
+        <span class="muted">or click to choose &middot; PDF, TXT, MD &middot; up to 5 MB</span>
+        <input id="file-input" type="file" accept=".pdf,.txt,.md" multiple hidden>
+      </div>
+      <ul id="uploads" class="uploads" aria-live="polite"></ul>
+
+      <h2>Your documents</h2>
+      <ul id="doc-list" class="doc-list"></ul>
+      <p id="doc-empty" class="muted" hidden>Nothing uploaded yet.</p>
+
+      <div class="settings">
+        <label>Search in <select id="scope"></select></label>
+        <label>Passages to use
+          <select id="topk"><option>2</option><option selected>4</option><option>6</option><option>8</option></select>
+        </label>
+      </div>
+    </aside>
+    <div id="scrim" class="scrim" hidden></div>
+
+    <main class="chat">
+      <div id="messages" class="messages" aria-live="polite">
+        <div id="empty" class="empty">
+          <h2>Ask your documents</h2>
+          <p class="muted" id="empty-text">Upload a document on the left, then ask a question.</p>
+        </div>
+      </div>
+      <form id="composer" class="composer">
+        <textarea id="input" rows="1" maxlength="2000" placeholder="Ask a question about your documents" aria-label="Your question"></textarea>
+        <button id="send" class="primary" type="submit">Send</button>
+        <button id="stop" type="button" hidden>Stop</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="{% static 'docqa/lib.js' %}"></script>
+  <script src="{% static 'docqa/app.js' %}"></script>
+</body>
+</html>
