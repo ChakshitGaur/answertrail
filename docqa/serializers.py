@@ -40,7 +40,16 @@ class DocumentUploadSerializer(serializers.Serializer):
         return attrs
 
 
+class HistoryItemSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=["user", "assistant"])
+    content = serializers.CharField(max_length=4000, allow_blank=True)
+
+
 class AskSerializer(serializers.Serializer):
     question = serializers.CharField(max_length=2000)
     document_id = serializers.IntegerField(required=False)
     top_k = serializers.IntegerField(required=False, min_value=1, max_value=10, default=4)
+    # documents: only from your files (default for API callers); auto: files when relevant, otherwise
+    # general knowledge; general: ignore the files and answer like a normal assistant
+    mode = serializers.ChoiceField(choices=["auto", "documents", "general"], default="documents")
+    history = HistoryItemSerializer(many=True, required=False, max_length=30, default=list)

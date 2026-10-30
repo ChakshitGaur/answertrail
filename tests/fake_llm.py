@@ -9,6 +9,10 @@ Behaviour is chosen by model name, so no state is needed:
   slow*     -> streams normally but 0.5 s per token (to test the Stop button)
   anything else -> answers "Hello wörld ✓ from <model> [1]." (non-ASCII on purpose)
 
+The reply also depends on the system prompt: a "standalone search query" request (follow-up rewrite)
+returns "refund policy: <last message>", and a general-assistant request returns
+"General answer: <question>".
+
 Run by hand:  python tests/fake_llm.py 8765
 """
 
@@ -54,7 +58,17 @@ class Handler(BaseHTTPRequestHandler):
         if model.startswith("denied"):
             return self._json(401, {"error": {"message": "API key not valid"}})
 
-        tokens = [] if model.startswith("empty") else [t.format(model=model) for t in TOKENS]
+        messages = body.get("messages", [])
+        system = messages[0]["content"] if messages else ""
+        last_user = messages[-1]["content"] if messages else ""
+        if model.startswith("empty"):
+            tokens = []
+        elif "standalone search query" in system:  # the follow-up rewrite request
+            tokens = ["refund policy: " + last_user]
+        elif "helpful, accurate assistant" in system:  # a general (not grounded) answer
+            tokens = ["General", " answer: ", last_user[:60]]
+        else:  # a grounded answer
+            tokens = [t.format(model=model) for t in TOKENS]
         if not body.get("stream"):
             return self._json(200, {"choices": [{"message": {"content": "".join(tokens)}}]})
 
