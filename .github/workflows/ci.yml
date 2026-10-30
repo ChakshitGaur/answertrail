@@ -56,4 +56,4 @@ jobs:
       - name: Retrieval eval (neural model on pgvector)
         run: |
           python manage.py migrate --noinput
-          python manage.py eval_retrieval --backend fastembed --show-misses
+          python manage.py eval_retrieval --backend fastembed --show-misses --routing
