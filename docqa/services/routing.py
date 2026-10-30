@@ -42,6 +42,9 @@ class Plan:
     message: str | None = None  # fixed reply instead of calling the model
     searched_for: str | None = None  # the rewritten query, when a follow-up was rewritten
     best_similarity: float | None = None
+    # Auto only: the model may decline when the passages turn out not to answer the question, and the
+    # caller then switches to a general answer (a similarity score alone can't tell on real documents)
+    can_decline: bool = False
 
 
 def plan_answer(
@@ -67,6 +70,7 @@ def plan_answer(
             passages=[h.chunk.text for h in result.hits],
             searched_for=searched_for,
             best_similarity=result.best_similarity,
+            can_decline=mode == "auto",
         )
     if mode == "documents":
         message = llm.NOT_IN_DOCUMENTS if result.hits else llm.NO_RESULTS

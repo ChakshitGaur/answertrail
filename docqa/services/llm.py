@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 from collections.abc import Iterator
 
@@ -31,6 +32,11 @@ SYSTEM_PROMPT = (
     "Cite passages inline like [1]. If the context does not contain the answer, "
     "say you don't know."
 )
+NOT_IN_DOCUMENTS_SENTINEL = "NOT_IN_DOCUMENTS"
+DECLINE_INSTRUCTION = (
+    f" If the passages do not actually answer the question, reply with exactly "
+    f"{NOT_IN_DOCUMENTS_SENTINEL} and nothing else."
+)
 GENERAL_PROMPT = (
     "You are a helpful, accurate assistant. Answer clearly and concisely. "
     "If you are not sure of something, say so rather than guessing."
@@ -47,6 +53,18 @@ HISTORY_MAX_CHARS = 1500  # per message
 
 class LLMError(RuntimeError):
     """The language model backend was unreachable or returned an error."""
+
+
+class NotInDocuments(Exception):
+    """The model looked at the passages and said they don't answer the question.
+
+    Only raised when asked to allow it (Auto mode), and before any text has been yielded, so the
+    caller can switch to a general answer without the user ever seeing the discarded one.
+    """
+
+
+def declined(text: str) -> bool:
+    return re.match(rf"^\W*{NOT_IN_DOCUMENTS_SENTINEL}", text, re.IGNORECASE) is not None
 
 
 def is_configured() -> bool:
@@ -87,14 +105,20 @@ def clean_history(history: list[dict] | None) -> list[dict]:
     return cleaned
 
 
-def build_messages(question: str, passages: list[str] | None, history: list[dict] | None) -> list[dict]:
-    """System prompt, recent conversation, then the question (with numbered passages when grounded)."""
+def build_messages(
+    question: str, passages: list[str] | None, history: list[dict] | None, allow_decline: bool = False
+) -> list[dict]:
+    """System prompt, recent conversation, then the question (with numbered passages when grounded).
+
+    With `allow_decline`, the model may reply NOT_IN_DOCUMENTS when the passages don't answer it.
+    """
     grounded = bool(passages)
     prior = clean_history(history)
     if prior and prior[-1]["role"] == "user":  # keep strict alternation before the new question
         prior.pop()
+    system = (SYSTEM_PROMPT + (DECLINE_INSTRUCTION if allow_decline else "")) if grounded else GENERAL_PROMPT
     return [
-        {"role": "system", "content": SYSTEM_PROMPT if grounded else GENERAL_PROMPT},
+        {"role": "system", "content": system},
         *prior,
         {"role": "user", "content": _build_prompt(question, passages) if grounded else question},
     ]
@@ -228,31 +252,62 @@ def _stream(messages: list[dict]) -> Iterator[str]:
         yield from _stream_anthropic(messages)
 
 
-def answer(question: str, passages: list[str] | None, history: list[dict] | None = None) -> str:
+def answer(
+    question: str,
+    passages: list[str] | None,
+    history: list[dict] | None = None,
+    allow_decline: bool = False,
+) -> str:
     """Write an answer with the configured model.
 
     With `passages`, the answer is grounded in them and cites them. Without, it is a general answer.
+    With `allow_decline` the model may say the passages don't answer it, which raises NotInDocuments.
     Order of providers: an OpenAI-compatible endpoint (LLM_BASE_URL), then Anthropic
     (ANTHROPIC_API_KEY). With neither, grounded questions get the best passage verbatim, so the app
     still works offline and free.
     """
     if not is_configured():
         return FALLBACK_PREFIX + passages[0] if passages else NO_MODEL_FOR_GENERAL
-    return _complete(build_messages(question, passages, history))
+    text = _complete(build_messages(question, passages, history, allow_decline and bool(passages)))
+    if allow_decline and passages and declined(text):
+        raise NotInDocuments
+    return text
 
 
 def stream_answer(
-    question: str, passages: list[str] | None, history: list[dict] | None = None
+    question: str,
+    passages: list[str] | None,
+    history: list[dict] | None = None,
+    allow_decline: bool = False,
 ) -> Iterator[str]:
     """Like `answer`, but yields the text in pieces as the model writes it.
 
     Failures before the first piece (overload, bad key, unknown model) are retried / failed over
     exactly as in `answer`. A failure after output has started raises LLMError mid-iteration.
+    With `allow_decline`, the first few characters are held back just long enough to tell whether
+    the model is declining; if it is, NotInDocuments is raised before anything has been yielded.
     """
     if not is_configured():
         yield FALLBACK_PREFIX + passages[0] if passages else NO_MODEL_FOR_GENERAL
         return
-    yield from _stream(build_messages(question, passages, history))
+    stream = _stream(build_messages(question, passages, history, allow_decline and bool(passages)))
+    if not (allow_decline and passages):
+        yield from stream
+        return
+    held = ""
+    for piece in stream:
+        if held is not None:
+            held += piece
+            if len(held) < len(NOT_IN_DOCUMENTS_SENTINEL) + 4:
+                continue  # not enough text yet to tell a decline from a real answer
+            if declined(held):
+                raise NotInDocuments
+            piece, held = held, None
+        yield piece
+    if held:  # a very short answer that ended before the buffer filled
+        if declined(held):
+            raise NotInDocuments
+        yield held
 
 
 def condense_question(question: str, history: list[dict] | None) -> str:

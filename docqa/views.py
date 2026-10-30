@@ -107,12 +107,20 @@ class AskStreamView(APIView):
                 yield _sse("token", {"t": plan.message})
                 yield _sse("done", {})
                 return
-            try:
-                for piece in llm.stream_answer(data["question"], plan.passages, data["history"]):
-                    yield _sse("token", {"t": piece})
-            except llm.LLMError as exc:
-                yield _sse("error", {"detail": f"The language model request failed: {exc}"})
-                return
+            passages = plan.passages
+            for attempt in (1, 2):
+                try:
+                    for piece in llm.stream_answer(data["question"], passages, data["history"], plan.can_decline):
+                        yield _sse("token", {"t": piece})
+                except llm.NotInDocuments:
+                    # the passages looked relevant but did not answer it: tell the UI, then answer generally
+                    passages = None
+                    yield _sse("mode", {"mode": "general", "sources": []})
+                    continue
+                except llm.LLMError as exc:
+                    yield _sse("error", {"detail": f"The language model request failed: {exc}"})
+                    return
+                break
             yield _sse("done", {})
 
         response = StreamingHttpResponse(events(), content_type="text/event-stream")
@@ -129,11 +137,19 @@ class AskView(APIView):
         plan = _plan(request, data)
         if plan is None:
             return Response({"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND)
+        mode, sources = plan.mode, plan.sources
         try:
-            text = plan.message or llm.answer(data["question"], plan.passages, data["history"])
+            if plan.message:
+                text = plan.message
+            else:
+                try:
+                    text = llm.answer(data["question"], plan.passages, data["history"], plan.can_decline)
+                except llm.NotInDocuments:  # relevant-looking passages that don't answer it: go general
+                    mode, sources = "general", []
+                    text = llm.answer(data["question"], None, data["history"])
         except llm.LLMError as exc:
             return Response(
                 {"detail": f"The language model request failed: {exc}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
-        return Response({"answer": text, "sources": plan.sources, **_meta(plan)})
+        return Response({"answer": text, **_meta(plan), "mode": mode, "sources": sources})

@@ -382,6 +382,15 @@
         buffer = parsed.rest;
         for (const { event, data } of parsed.events) {
           if (event === "sources") { sources = data.sources; meta = data; renderSources(view, sources); showOrigin(view, data); }
+          else if (event === "mode") {
+            // the model said the passages don't answer it: relabel, drop the sources, answer generally
+            meta = { ...meta, mode: data.mode };
+            sources = data.sources;
+            text = "";
+            renderSources(view, sources);
+            showOrigin(view, meta);
+            schedule();
+          }
           else if (event === "token") { text += data.t; schedule(); }
           else if (event === "error") { finished = hadError = true; paint(); showError(data.detail); }
           else if (event === "done") { finished = true; }

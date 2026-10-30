@@ -7,6 +7,8 @@ Behaviour is chosen by model name, so no state is needed:
   cut*      -> streams two tokens, then the connection dies mid-stream
   empty*    -> streams no text at all
   slow*     -> streams normally but 0.5 s per token (to test the Stop button)
+  decline*  -> when allowed to, answers a grounded question with NOT_IN_DOCUMENTS (split over three
+               chunks; "decline2" sends it in one chunk with quotes and a full stop)
   anything else -> answers "Hello wörld ✓ from <model> [1]." (non-ASCII on purpose)
 
 The reply also depends on the system prompt: a "standalone search query" request (follow-up rewrite)
@@ -63,6 +65,8 @@ class Handler(BaseHTTPRequestHandler):
         last_user = messages[-1]["content"] if messages else ""
         if model.startswith("empty"):
             tokens = []
+        elif model.startswith("decline") and "NOT_IN_DOCUMENTS" in system:  # may decline grounded answers
+            tokens = ["`NOT_IN_DOCUMENTS`."] if model == "decline2" else ["NOT_", "IN_DOC", "UMENTS"]
         elif "standalone search query" in system:  # the follow-up rewrite request
             tokens = ["refund policy: " + last_user]
         elif "helpful, accurate assistant" in system:  # a general (not grounded) answer
