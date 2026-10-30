@@ -53,6 +53,15 @@ on-topic questions scored 0.587 or higher and 14 unrelated questions ("capital o
 recalibrate on your own documents. **Auto mode needs the neural model**: the lexical `hash` embedder cannot
 separate the two groups (47% / 86% on the same test).
 
+**A cutoff alone is not enough on real documents.** The cutoff was calibrated on clean policy documents. On
+a code-heavy Python guide, "Tell me a joke" scored 0.602 (above the cutoff) because the guide is full of
+`Animal`/`speak()` examples, and adding "Answer in one sentence" to a question moved its score from 0.476
+to 0.625. So in Auto mode the model is also allowed to reply `NOT_IN_DOCUMENTS` when the passages don't
+answer the question. The server holds back the first few characters of the stream just long enough to tell,
+then switches: the badge changes, the sources are dropped, and a general answer follows, before any
+discarded text could be shown. This costs one extra model call only for such questions (about 12 s against
+6 s in a live test with Gemini). In Documents-only mode the model just says it doesn't know.
+
 **Memory.** The browser sends the last few messages with each question. For follow-ups the model first
 rewrites the question into a standalone search query (one extra model call, shown to you as "Searched for: ...").
 If the rewrite fails the question is searched as typed. Failed, stopped, "not found" and passage-only replies
@@ -118,7 +127,8 @@ Put it behind HTTPS and set `DJANGO_SECURE=1`. HSTS preload and include-subdomai
 | POST | `/api/ask/stream/` | same input; Server-Sent Events: `sources` (with `mode`, `searched_for`, `best_similarity`), then `token` pieces, then `done` or `error` |
 
 `mode` is `documents` (default), `auto` or `general`; the response `mode` is `documents`, `general` or
-`not_found` (what actually happened). `history` is a list of up to 30 `{role: "user"|"assistant", content}`
+`not_found` (what actually happened; in the stream, a `mode` event switches a `documents` answer to
+`general` when the model declines). `history` is a list of up to 30 `{role: "user"|"assistant", content}`
 messages; only the last 8 are used.
 
 Send `Authorization: Token <token>`. Validation and auth errors are plain JSON with the usual status codes;
@@ -194,9 +204,9 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 ## Known limits
 
 - Answer quality (faithfulness to the sources) is not evaluated, only retrieval and routing.
-- Auto routing is a similarity cutoff, so it can misroute: a vague on-topic question may fall below it and
-  get a general answer, and an unrelated question that shares vocabulary with your documents may pass it.
-  The badge always says which happened.
+- Auto routing starts with a similarity cutoff. An unrelated question that passes it is caught by the model
+  check, but a vague on-topic question that falls *below* it never reaches the documents and gets a general
+  answer. The badge always says which happened; Documents-only mode avoids it.
 - A general-knowledge answer can be wrong or out of date. It is labelled, but not fact-checked.
 - Follow-up rewriting costs one extra model call, and a model that rewrites badly can steer the search.
   The "Searched for" line shows what was searched.
