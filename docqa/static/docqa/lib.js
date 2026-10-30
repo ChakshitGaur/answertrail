@@ -95,6 +95,34 @@
     return null;
   }
 
+  const HISTORY_MAX_MESSAGES = 8; // keep in step with the server (docqa/services/llm.py)
+  const HISTORY_MAX_CHARS = 1500;
+
+  /** The recent conversation to send with a question, so follow-ups like "and the second one?" work. */
+  function buildHistory(chat, maxMessages = HISTORY_MAX_MESSAGES) {
+    return chat
+      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
+      .slice(-maxMessages)
+      .map((m) => ({ role: m.role, content: m.content.trim().slice(0, HISTORY_MAX_CHARS) }));
+  }
+
+  const BADGES = {
+    documents: { kind: "documents", label: "From your documents" },
+    general: { kind: "general", label: "General knowledge, not from your files" },
+    not_found: { kind: "not_found", label: "Not in your documents" },
+  };
+
+  /** Label shown on an answer so you can tell a cited answer from a general-knowledge one. */
+  function modeBadge(mode) {
+    return BADGES[mode] || null;
+  }
+
+  const MODE_HELP = {
+    auto: "Uses your documents when they cover the question, otherwise answers from general knowledge and says so.",
+    documents: "Answers only from your documents, and says when they don't cover it.",
+    general: "Ignores your documents and answers like a normal assistant.",
+  };
+
   function plural(count, word) {
     return `${count} ${word}${count === 1 ? "" : "s"}`;
   }
@@ -105,5 +133,5 @@
     return `${(n / 1024 / 1024).toFixed(1)} MB`;
   }
 
-  return { FALLBACK_PREFIX, MAX_UPLOAD_BYTES, escapeHtml, stripFallback, renderAnswer, parseSSE, apiErrorMessage, validateUpload, formatBytes, plural };
+  return { FALLBACK_PREFIX, MAX_UPLOAD_BYTES, escapeHtml, stripFallback, renderAnswer, parseSSE, apiErrorMessage, validateUpload, formatBytes, plural, buildHistory, modeBadge, MODE_HELP, HISTORY_MAX_MESSAGES };
 });

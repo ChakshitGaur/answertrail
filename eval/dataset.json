@@ -34,40 +34,256 @@
     }
   ],
   "questions": [
-    {"q": "How long do I have to send something back for my money back?", "evidence": "within 45 days of delivery"},
-    {"q": "Can I get cash back if I return an item two months after it arrived?", "evidence": "store credit only"},
-    {"q": "How fast do I get my refund once the return arrives?", "evidence": "within 5 business days after the warehouse"},
-    {"q": "Who pays for return postage when I just changed my mind?", "evidence": "flat 6 dollar label fee"},
-    {"q": "What happens if I return a sleeping bag without its bag?", "evidence": "10 percent restocking fee"},
-    {"q": "Is express delivery available and what does it cost?", "evidence": "costs 18 dollars flat"},
-    {"q": "Which countries do you deliver to?", "evidence": "united states, canada and the united kingdom"},
-    {"q": "What's the order cutoff for same-day dispatch?", "evidence": "before 2 pm eastern"},
-    {"q": "What do you do if the courier loses my parcel?", "evidence": "we reship at no cost"},
-    {"q": "How are canoes delivered?", "evidence": "ship by freight"},
-    {"q": "Minimum order for free standard delivery?", "evidence": "free for orders over 75 dollars"},
-    {"q": "How long is the guarantee on my tent?", "evidence": "lifetime warranty"},
-    {"q": "How many months are boots covered?", "evidence": "footwear is covered for 12 months"},
-    {"q": "Does the guarantee cover sun fading?", "evidence": "uv fading"},
-    {"q": "How do I start a guarantee claim?", "evidence": "warranty@northwind.example"},
-    {"q": "How many days per week can staff work from home?", "evidence": "up to 3 days per week"},
-    {"q": "What are the hours when everyone must be available?", "evidence": "10 am to 3 pm local time"},
-    {"q": "Is there money to set up my home desk?", "evidence": "home office stipend of 500 dollars"},
-    {"q": "Do I need permission to work abroad for a few weeks?", "evidence": "more than 14 days requires approval"},
-    {"q": "By when must I file my expenses?", "evidence": "within 30 days of the purchase"},
-    {"q": "What's the daily limit for food on business trips?", "evidence": "up to 60 dollars per day"},
-    {"q": "How early must flights be booked?", "evidence": "at least 14 days in advance"},
-    {"q": "Can I expense a beer at dinner?", "evidence": "alcohol is not reimbursable"},
-    {"q": "How long should a password be?", "evidence": "at least 14 characters"},
-    {"q": "Are text message codes acceptable for two-factor login?", "evidence": "sms codes are not allowed"},
-    {"q": "How quickly do I report a stolen laptop?", "evidence": "within 1 hour"},
-    {"q": "How long does production database access last?", "evidence": "4 hours at a time"},
-    {"q": "How soon must the primary engineer respond to a page?", "evidence": "within 5 minutes"},
-    {"q": "What counts as the most severe incident level?", "evidence": "customers cannot check out"},
-    {"q": "How often are updates posted during a major outage?", "evidence": "every 30 minutes"},
-    {"q": "What compensation do on-call staff get?", "evidence": "250 dollar weekly stipend"},
-    {"q": "Why shouldn't I put a wet tent in storage?", "evidence": "mildew can ruin the coating"},
-    {"q": "How often should I re-waterproof?", "evidence": "once a season or after 20 nights"},
-    {"q": "What should I use to wash my tent?", "evidence": "lukewarm water and a soft sponge"},
-    {"q": "How should I keep the tent when not in use, packed tight?", "evidence": "cotton bag"}
+    {
+      "q": "How long do I have to send something back for my money back?",
+      "evidence": "within 45 days of delivery",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Can I get cash back if I return an item two months after it arrived?",
+      "evidence": "store credit only",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How fast do I get my refund once the return arrives?",
+      "evidence": "within 5 business days after the warehouse",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Who pays for return postage when I just changed my mind?",
+      "evidence": "flat 6 dollar label fee",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What happens if I return a sleeping bag without its bag?",
+      "evidence": "10 percent restocking fee",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Is express delivery available and what does it cost?",
+      "evidence": "costs 18 dollars flat",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Which countries do you deliver to?",
+      "evidence": "united states, canada and the united kingdom",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What's the order cutoff for same-day dispatch?",
+      "evidence": "before 2 pm eastern",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What do you do if the courier loses my parcel?",
+      "evidence": "we reship at no cost",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How are canoes delivered?",
+      "evidence": "ship by freight",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Minimum order for free standard delivery?",
+      "evidence": "free for orders over 75 dollars",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How long is the guarantee on my tent?",
+      "evidence": "lifetime warranty",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How many months are boots covered?",
+      "evidence": "footwear is covered for 12 months",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Does the guarantee cover sun fading?",
+      "evidence": "uv fading",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How do I start a guarantee claim?",
+      "evidence": "warranty@northwind.example",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How many days per week can staff work from home?",
+      "evidence": "up to 3 days per week",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What are the hours when everyone must be available?",
+      "evidence": "10 am to 3 pm local time",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Is there money to set up my home desk?",
+      "evidence": "home office stipend of 500 dollars",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Do I need permission to work abroad for a few weeks?",
+      "evidence": "more than 14 days requires approval",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "By when must I file my expenses?",
+      "evidence": "within 30 days of the purchase",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What's the daily limit for food on business trips?",
+      "evidence": "up to 60 dollars per day",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How early must flights be booked?",
+      "evidence": "at least 14 days in advance",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Can I expense a beer at dinner?",
+      "evidence": "alcohol is not reimbursable",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How long should a password be?",
+      "evidence": "at least 14 characters",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Are text message codes acceptable for two-factor login?",
+      "evidence": "sms codes are not allowed",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How quickly do I report a stolen laptop?",
+      "evidence": "within 1 hour",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How long does production database access last?",
+      "evidence": "4 hours at a time",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How soon must the primary engineer respond to a page?",
+      "evidence": "within 5 minutes",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What counts as the most severe incident level?",
+      "evidence": "customers cannot check out",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How often are updates posted during a major outage?",
+      "evidence": "every 30 minutes",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What compensation do on-call staff get?",
+      "evidence": "250 dollar weekly stipend",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Why shouldn't I put a wet tent in storage?",
+      "evidence": "mildew can ruin the coating",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How often should I re-waterproof?",
+      "evidence": "once a season or after 20 nights",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What should I use to wash my tent?",
+      "evidence": "lukewarm water and a soft sponge",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How should I keep the tent when not in use, packed tight?",
+      "evidence": "cotton bag",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "warranty@northwind.example",
+      "evidence": "warranty@northwind.example",
+      "kind": "keyword"
+    },
+    {
+      "q": "Sev1",
+      "evidence": "sev1 means customers cannot check out",
+      "kind": "keyword"
+    },
+    {
+      "q": "250 dollar stipend",
+      "evidence": "250 dollar weekly stipend",
+      "kind": "keyword"
+    },
+    {
+      "q": "SMS codes",
+      "evidence": "sms codes are not allowed",
+      "kind": "keyword"
+    },
+    {
+      "q": "UV fading",
+      "evidence": "uv fading",
+      "kind": "keyword"
+    },
+    {
+      "q": "canoes freight signature",
+      "evidence": "ship by freight",
+      "kind": "keyword"
+    },
+    {
+      "q": "stuff sack restocking fee",
+      "evidence": "10 percent restocking fee",
+      "kind": "keyword"
+    },
+    {
+      "q": "silicone stick zipper",
+      "evidence": "lubricated with a silicone stick",
+      "kind": "keyword"
+    },
+    {
+      "q": "hardware key authenticator app",
+      "evidence": "hardware key or authenticator app",
+      "kind": "keyword"
+    },
+    {
+      "q": "Friday payroll run",
+      "evidence": "next friday payroll run",
+      "kind": "keyword"
+    },
+    {
+      "q": "director approval 1,000",
+      "evidence": "need director approval before purchase",
+      "kind": "keyword"
+    },
+    {
+      "q": "phishing simulations retake training",
+      "evidence": "must retake the training",
+      "kind": "keyword"
+    }
+  ],
+  "off_topic": [
+    "What is the capital of France?",
+    "Write a short poem about autumn.",
+    "Who won the football world cup in 2018?",
+    "Translate 'good morning' into Spanish.",
+    "What is 15 times 12?",
+    "Tell me a joke.",
+    "hi",
+    "thanks, that helps",
+    "How do vaccines work?",
+    "Recommend a good book about ancient Rome.",
+    "What is the tallest mountain in the world?",
+    "Explain what a black hole is.",
+    "How do I bake sourdough bread?",
+    "What is the speed of light?"
   ]
 }

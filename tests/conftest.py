@@ -9,6 +9,8 @@ def isolated_from_local_config(settings):
     settings.LLM_BASE_URL = settings.LLM_API_KEY = settings.LLM_MODEL = settings.LLM_FALLBACK_MODELS = ""
     settings.ANTHROPIC_API_KEY = ""
     settings.EMBEDDING_BACKEND = "hash"
+    # the hash embedder's scores are tiny, so by default no cutoff; routing tests set their own
+    settings.RELEVANCE_THRESHOLD = -1.0
 
 
 @pytest.fixture

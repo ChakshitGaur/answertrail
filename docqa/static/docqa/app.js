@@ -14,6 +14,7 @@
     token: store.get("token"),
     username: store.get("username") || "",
     docs: [],
+    chat: [], // finished question/answer pairs sent along as memory, so follow-ups work
     asking: false,
     controller: null,
     mode: "signin",
@@ -112,6 +113,7 @@
     if (state.controller) state.controller.abort();
     state.token = null;
     state.docs = [];
+    state.chat = [];
     store.del("token");
     store.del("username");
     $("messages").replaceChildren($("empty"));
@@ -147,14 +149,38 @@
       ...state.docs.map((d) => el("option", { value: String(d.id), text: d.title })));
     scope.value = state.docs.some((d) => String(d.id) === previous) ? previous : "";
 
-    const hasDocs = state.docs.length > 0;
-    $("input").disabled = !hasDocs;
-    $("send").disabled = !hasDocs || state.asking;
-    $("input").placeholder = hasDocs ? "Ask about your documents" : "Upload a document to start";
-    $("empty-text").textContent = hasDocs
-      ? "Ask anything about your documents. Answers cite the passages they came from."
-      : "Upload a document on the left, then ask a question.";
+    updateComposer();
   }
+
+  /* ---------- answer mode ---------- */
+
+  const MODES = ["auto", "documents", "general"];
+  const savedMode = store.get("mode");
+  $("mode").value = MODES.includes(savedMode) ? savedMode : "auto";
+
+  // Documents-only needs a document; Auto and General chat work without one.
+  function canAsk() {
+    return $("mode").value !== "documents" || state.docs.length > 0;
+  }
+
+  function updateComposer() {
+    const mode = $("mode").value;
+    const hasDocs = state.docs.length > 0;
+    const ok = canAsk();
+    $("input").disabled = !ok || state.asking;
+    $("send").disabled = !ok || state.asking;
+    $("input").placeholder = !ok ? "Upload a document to start" : mode === "general" ? "Ask anything" : "Ask about your documents";
+    $("mode-help").textContent = L.MODE_HELP[mode];
+    $("scope").disabled = mode === "general";
+    $("topk").disabled = mode === "general";
+    $("empty-text").textContent =
+      mode === "general" ? "General chat: ask anything. Your documents are not used in this mode."
+      : !hasDocs && mode === "documents" ? "Upload a document on the left, then ask a question."
+      : mode === "auto" ? "Ask anything. If your documents cover it, the answer cites them; otherwise you get a general answer, labelled as such."
+      : "Ask anything about your documents. Answers cite the passages they came from.";
+  }
+
+  $("mode").addEventListener("change", () => { store.set("mode", $("mode").value); updateComposer(); });
 
   function docItem(doc) {
     const del = el("button", { type: "button", text: "Delete", "aria-label": "Delete " + doc.title });
@@ -252,12 +278,28 @@
     const typing = el("span", { class: "typing", "aria-label": "Searching your documents" }, el("i"), el("i"), el("i"));
     const answer = el("div", { class: "answer" }, typing);
     const notice = el("div", { class: "notice", hidden: "" });
+    const badge = el("div", { class: "badge", hidden: "" });
+    const searched = el("div", { class: "muted searched", hidden: "" });
     const sourcesBox = el("div");
     const errorBox = el("div");
-    const bubble = el("div", { class: "bubble" }, notice, answer, errorBox, sourcesBox);
+    const bubble = el("div", { class: "bubble" }, badge, searched, notice, answer, errorBox, sourcesBox);
     messages.append(el("div", { class: "msg assistant" }, bubble));
     scrollDown();
-    return { bubble, answer, notice, sourcesBox, errorBox };
+    return { bubble, answer, notice, badge, searched, sourcesBox, errorBox };
+  }
+
+  /** Tells the reader where an answer comes from, and what was actually searched for follow-ups. */
+  function showOrigin(view, meta) {
+    const badge = L.modeBadge(meta.mode);
+    if (badge) {
+      view.badge.className = "badge " + badge.kind;
+      view.badge.textContent = badge.label;
+      view.badge.hidden = false;
+    }
+    if (meta.searched_for) {
+      view.searched.textContent = "Searched for: " + meta.searched_for;
+      view.searched.hidden = false;
+    }
   }
 
   function renderSources(view, sources) {
@@ -286,8 +328,7 @@
     state.asking = on;
     $("send").hidden = on;
     $("stop").hidden = !on;
-    $("send").disabled = on || !state.docs.length;
-    $("input").disabled = on || !state.docs.length;
+    updateComposer();
     if (!on) $("input").focus();
   }
 
@@ -298,6 +339,8 @@
     state.controller = new AbortController();
 
     let sources = [];
+    let meta = null;
+    let hadError = false;
     let text = "";
     let frame = 0;
     const paint = () => {
@@ -316,8 +359,9 @@
     };
 
     try {
-      const body = { question, top_k: Number($("topk").value) };
-      if ($("scope").value) body.document_id = Number($("scope").value);
+      const mode = $("mode").value;
+      const body = { question, mode, history: L.buildHistory(state.chat), top_k: Number($("topk").value) };
+      if (mode !== "general" && $("scope").value) body.document_id = Number($("scope").value);
       const resp = await api("/api/ask/stream/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -337,14 +381,24 @@
         const parsed = L.parseSSE(buffer);
         buffer = parsed.rest;
         for (const { event, data } of parsed.events) {
-          if (event === "sources") { sources = data.sources; renderSources(view, sources); }
+          if (event === "sources") { sources = data.sources; meta = data; renderSources(view, sources); showOrigin(view, data); }
+          else if (event === "mode") {
+            // the model said the passages don't answer it: relabel, drop the sources, answer generally
+            meta = { ...meta, mode: data.mode };
+            sources = data.sources;
+            text = "";
+            renderSources(view, sources);
+            showOrigin(view, meta);
+            schedule();
+          }
           else if (event === "token") { text += data.t; schedule(); }
-          else if (event === "error") { finished = true; paint(); showError(data.detail); }
+          else if (event === "error") { finished = hadError = true; paint(); showError(data.detail); }
           else if (event === "done") { finished = true; }
         }
       }
       paint();
-      if (!finished) showError("The connection closed before the answer finished.");
+      if (!finished) { hadError = true; showError("The connection closed before the answer finished."); }
+      remember(question, text, meta, hadError);
     } catch (err) {
       paint();
       if (err.name === "AbortError") view.errorBox.replaceChildren(el("p", { class: "muted", text: "Stopped." }));
@@ -357,10 +411,26 @@
     }
   }
 
+  /** Keep a finished exchange as memory. Failed, stopped, "not found" and passage-only replies are left out. */
+  function remember(question, text, meta, hadError) {
+    if (hadError || !meta || meta.mode === "not_found" || !text.trim()) return;
+    const answer = L.stripFallback(text);
+    if (answer.fallback) return;
+    state.chat.push({ role: "user", content: question }, { role: "assistant", content: answer.text });
+  }
+
+  $("new-chat").addEventListener("click", () => {
+    if (state.controller) state.controller.abort();
+    state.chat = [];
+    messages.replaceChildren($("empty"));
+    $("empty").hidden = false;
+    $("input").focus();
+  });
+
   $("composer").addEventListener("submit", (event) => {
     event.preventDefault();
     const question = $("input").value.trim();
-    if (!question || state.asking || !state.docs.length) return;
+    if (!question || state.asking || !canAsk()) return;
     $("input").value = "";
     autoGrow();
     ask(question);

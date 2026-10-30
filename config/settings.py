@@ -132,6 +132,9 @@ LLM_FALLBACK_MODELS = os.environ.get("LLM_FALLBACK_MODELS", "")  # comma separat
 EMBEDDING_BACKEND = os.environ.get("EMBEDDING_BACKEND", "hash")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 EMBEDDING_DIM = int(os.environ.get("EMBEDDING_DIM", "384"))  # bge-small-en-v1.5 is 384-d
+HYBRID_SEARCH = os.environ.get("HYBRID_SEARCH", "1") == "1"  # vectors + BM25 keywords, fused
+# Best-passage similarity needed to answer from the documents; empty = calibrated default per embedder
+RELEVANCE_THRESHOLD = float(os.environ["RELEVANCE_THRESHOLD"]) if os.environ.get("RELEVANCE_THRESHOLD") else None
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "500"))  # characters
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))

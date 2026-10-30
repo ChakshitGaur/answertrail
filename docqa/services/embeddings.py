@@ -11,7 +11,7 @@ _STOPWORDS = frozenset(
 )
 
 
-def _tokenize(text: str) -> list[str]:
+def tokenize(text: str) -> list[str]:
     tokens = (t for t in _TOKEN.findall(text.lower()) if t not in _STOPWORDS)
     # crude plural stripping so "refund" matches "refunds"
     return [t[:-1] if len(t) > 3 and t.endswith("s") else t for t in tokens]
@@ -20,7 +20,7 @@ def _tokenize(text: str) -> list[str]:
 def _hash_embed(text: str) -> list[float]:
     """Lexical feature-hashing embedding (unigrams + bigrams), L2-normalised."""
     dim = settings.EMBEDDING_DIM
-    tokens = _tokenize(text)
+    tokens = tokenize(text)
     features = tokens + [f"{a}_{b}" for a, b in zip(tokens, tokens[1:])]
     vec = np.zeros(dim, dtype=np.float32)
     for feat in features:

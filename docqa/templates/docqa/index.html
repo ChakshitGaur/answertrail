@@ -31,6 +31,7 @@
       <h1>Doc Q&amp;A</h1>
       <span class="spacer"></span>
       <span id="who" class="muted"></span>
+      <button id="new-chat" type="button" title="Clear the conversation">New chat</button>
       <button id="theme-btn" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle theme">&#9680;</button>
       <button id="logout-btn" type="button">Sign out</button>
     </header>
@@ -48,6 +49,14 @@
       <p id="doc-empty" class="muted" hidden>Nothing uploaded yet.</p>
 
       <div class="settings">
+        <label>Answer mode
+          <select id="mode">
+            <option value="auto">Auto: documents, else general</option>
+            <option value="documents">Documents only</option>
+            <option value="general">General chat</option>
+          </select>
+        </label>
+        <p id="mode-help" class="muted"></p>
         <label>Search in <select id="scope"></select></label>
         <label>Passages to use
           <select id="topk"><option>2</option><option selected>4</option><option>6</option><option>8</option></select>

@@ -17,7 +17,7 @@ from docqa.serializers import (
     DocumentUploadSerializer,
     RegisterSerializer,
 )
-from docqa.services import llm, retrieval
+from docqa.services import llm, routing
 from docqa.services.ingest import IngestError, extract_text, ingest_document
 
 
@@ -67,49 +67,60 @@ class DocumentViewSet(
         return Response(DocumentSerializer(doc).data, status=status.HTTP_201_CREATED)
 
 
-def _sources(hits):
-    return [
-        {
-            "n": i,
-            "document_id": h.chunk.document_id,
-            "document_title": h.chunk.document.title,
-            "chunk_index": h.chunk.index,
-            "score": round(h.score, 4),
-            "text": h.chunk.text,
-        }
-        for i, h in enumerate(hits, start=1)
-    ]
-
-
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
+def _plan(request, data):
+    """Validate the document scope and decide how the question is answered (None = unknown document)."""
+    doc_id = data.get("document_id")
+    if doc_id is not None and not Document.objects.filter(pk=doc_id, owner=request.user).exists():
+        return None
+    return routing.plan_answer(
+        request.user, data["question"], data["mode"], data["history"], data["top_k"], doc_id
+    )
+
+
+def _meta(plan) -> dict:
+    """What the UI needs to label an answer: where it comes from, and what was actually searched."""
+    return {
+        "mode": plan.mode,
+        "searched_for": plan.searched_for,
+        "best_similarity": None if plan.best_similarity is None else round(plan.best_similarity, 4),
+    }
+
+
 class AskStreamView(APIView):
-    """Server-sent events: `sources`, then `token` pieces, then `done` (or `error`)."""
+    """Server-sent events: `sources` (with the answer mode), then `token` pieces, then `done`/`error`."""
 
     def post(self, request):
         ser = AskSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        doc_id = data.get("document_id")
-        if doc_id is not None and not Document.objects.filter(
-            pk=doc_id, owner=request.user
-        ).exists():
+        plan = _plan(request, data)  # evaluated now: the generator below must not touch the database
+        if plan is None:
             return Response({"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        hits = retrieval.search(request.user, data["question"], data["top_k"], doc_id)
-        sources = _sources(hits)  # evaluated now: the generator below must not touch the database
-        passages = [h.chunk.text for h in hits]
-
         def events():
-            yield _sse("sources", {"sources": sources})
-            try:
-                for piece in llm.stream_answer(data["question"], passages):
-                    yield _sse("token", {"t": piece})
-            except llm.LLMError as exc:
-                yield _sse("error", {"detail": f"The language model request failed: {exc}"})
+            yield _sse("sources", {"sources": plan.sources, **_meta(plan)})
+            if plan.message:
+                yield _sse("token", {"t": plan.message})
+                yield _sse("done", {})
                 return
+            passages = plan.passages
+            for attempt in (1, 2):
+                try:
+                    for piece in llm.stream_answer(data["question"], passages, data["history"], plan.can_decline):
+                        yield _sse("token", {"t": piece})
+                except llm.NotInDocuments:
+                    # the passages looked relevant but did not answer it: tell the UI, then answer generally
+                    passages = None
+                    yield _sse("mode", {"mode": "general", "sources": []})
+                    continue
+                except llm.LLMError as exc:
+                    yield _sse("error", {"detail": f"The language model request failed: {exc}"})
+                    return
+                break
             yield _sse("done", {})
 
         response = StreamingHttpResponse(events(), content_type="text/event-stream")
@@ -123,19 +134,22 @@ class AskView(APIView):
         ser = AskSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-
-        doc_id = data.get("document_id")
-        if doc_id is not None and not Document.objects.filter(
-            pk=doc_id, owner=request.user
-        ).exists():
+        plan = _plan(request, data)
+        if plan is None:
             return Response({"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        hits = retrieval.search(request.user, data["question"], data["top_k"], doc_id)
+        mode, sources = plan.mode, plan.sources
         try:
-            text = llm.answer(data["question"], [h.chunk.text for h in hits])
+            if plan.message:
+                text = plan.message
+            else:
+                try:
+                    text = llm.answer(data["question"], plan.passages, data["history"], plan.can_decline)
+                except llm.NotInDocuments:  # relevant-looking passages that don't answer it: go general
+                    mode, sources = "general", []
+                    text = llm.answer(data["question"], None, data["history"])
         except llm.LLMError as exc:
             return Response(
                 {"detail": f"The language model request failed: {exc}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
-        return Response({"answer": text, "sources": _sources(hits)})
+        return Response({"answer": text, **_meta(plan), "mode": mode, "sources": sources})

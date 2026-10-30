@@ -103,7 +103,7 @@ def test_empty_model_answer_is_an_error(client, llm_settings, settings):
 
 def test_no_documents_says_so_without_calling_the_model(llm_settings):
     events = parse_sse(ask_stream(make_client("nodocs")))
-    assert events[0] == ("sources", {"sources": []})
+    assert events[0][1]["sources"] == [] and events[0][1]["mode"] == "not_found"
     assert text_of(events) == llm.NO_RESULTS
     assert llm_settings.requests == []
 
@@ -121,7 +121,7 @@ def test_cannot_stream_from_someone_elses_document(client, llm_settings):
     doc_id = client.get("/api/documents/").data[0]["id"]
     assert ask_stream(other, document_id=doc_id).status_code == 404
     events = parse_sse(ask_stream(other))
-    assert events[0] == ("sources", {"sources": []})
+    assert events[0][1]["sources"] == []
 
 
 def test_document_scope_limits_sources(client, llm_settings):
