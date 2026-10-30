@@ -2,7 +2,10 @@ import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from config.env import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")  # optional local settings and keys; see .env.example
 
 _DEV_SECRET_KEY = "dev-insecure-key-change-me"
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)

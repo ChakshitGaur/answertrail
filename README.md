@@ -41,6 +41,9 @@ server uses the first option that is configured:
 | Anthropic | `ANTHROPIC_API_KEY` (paid), optional `ANSWER_MODEL` |
 | Neither | the best matching passage is returned as-is |
 
+The easiest way to set these is a local `.env` file: copy `.env.example` to `.env` and paste your key
+into it. The app reads it on start. `.env` is git-ignored, and real environment variables override it.
+
 Examples for the first option:
 
 - **Ollama** (runs on your PC): `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_MODEL=llama3.2`
