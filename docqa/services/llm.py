@@ -67,7 +67,8 @@ def _open_chat(question: str, passages: list[str], stream: bool) -> requests.Res
     tried = []
     for model in models:
         tried.append(model)
-        body = {"model": model, "max_tokens": 800, "temperature": 0.2, "messages": messages}
+        # generous: "thinking" models (Gemini 3.x) spend part of this budget on reasoning first
+        body = {"model": model, "max_tokens": 2000, "temperature": 0.2, "messages": messages}
         if stream:
             body["stream"] = True
         for attempt in range(_ATTEMPTS):
@@ -77,6 +78,9 @@ def _open_chat(question: str, passages: list[str], stream: bool) -> requests.Res
                 time.sleep(_BACKOFF_SECONDS * attempt)
             try:
                 resp = requests.post(url, headers=headers, json=body, timeout=_TIMEOUT, stream=stream)
+            except requests.Timeout as exc:  # a slow model rarely speeds up on retry: move on
+                last_error = f"{model}: no reply within {_TIMEOUT[1]}s ({exc.__class__.__name__})"
+                break
             except requests.RequestException as exc:
                 last_error = f"{model}: {exc.__class__.__name__}: {exc}"
                 continue

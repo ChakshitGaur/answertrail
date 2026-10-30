@@ -23,8 +23,8 @@ if ($hasSavedKey) {
 
 if ($key) {
     $env:LLM_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-    $env:LLM_MODEL = if ($env:LLM_MODEL) { $env:LLM_MODEL } else { "gemini-3.8-flash" }
-    $env:LLM_FALLBACK_MODELS = if ($env:LLM_FALLBACK_MODELS) { $env:LLM_FALLBACK_MODELS } else { "gemini-3.6-flash,gemini-3.5-flash-lite" }
+    $env:LLM_MODEL = if ($env:LLM_MODEL) { $env:LLM_MODEL } else { "gemini-3.6-flash" }
+    $env:LLM_FALLBACK_MODELS = if ($env:LLM_FALLBACK_MODELS) { $env:LLM_FALLBACK_MODELS } else { "gemini-3.5-flash-lite,gemini-3.8-flash" }
     $env:LLM_API_KEY = $key
 } elseif (-not $hasSavedKey) {
     Write-Host "No key: answers will be raw passages." -ForegroundColor Yellow

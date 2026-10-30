@@ -46,12 +46,13 @@ except requests.RequestException as exc:
 print("\n2) POST /chat/completions (up to 4 tries)")
 payload = {"model": model, "max_tokens": 30, "messages": [{"role": "user", "content": "Reply with the single word: pong"}]}
 for attempt in range(1, 5):
+    began = time.monotonic()
     try:
         r = requests.post(f"{base}/chat/completions", headers=headers, json=payload, timeout=60)
     except requests.RequestException as exc:
-        print(f"  try {attempt}: {exc.__class__.__name__}: {exc}")
+        print(f"  try {attempt} ({time.monotonic() - began:.1f}s): {exc.__class__.__name__}: {exc}")
     else:
-        print(f"  try {attempt}:", end="")
+        print(f"  try {attempt} ({time.monotonic() - began:.1f}s):", end="")
         show(r)
         if r.ok or r.status_code not in (429, 500, 502, 503, 504):
             break

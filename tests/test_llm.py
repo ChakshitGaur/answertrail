@@ -134,6 +134,29 @@ def test_missing_model_name_is_a_clear_error(settings):
         llm.answer("q", PASSAGES)
 
 
+def test_timeout_skips_to_the_next_model_without_retrying_the_slow_one(settings, monkeypatch):
+    settings.LLM_BASE_URL = "http://x/v1"
+    settings.LLM_FALLBACK_MODELS = "fast"
+    calls = script(monkeypatch, requests.ReadTimeout("slow"), FakeResponse(OK))
+    assert llm.answer("q", PASSAGES) == "30 days [1]."
+    assert [c["body"]["model"] for c in calls] == ["primary", "fast"]
+
+
+def test_all_models_timing_out_is_a_clear_error(settings, monkeypatch):
+    settings.LLM_BASE_URL = "http://x/v1"
+    settings.LLM_FALLBACK_MODELS = "fast"
+    script(monkeypatch, requests.ReadTimeout("slow"), requests.ConnectTimeout("slow"))
+    with pytest.raises(llm.LLMError, match=r"primary, fast.*no reply within"):
+        llm.answer("q", PASSAGES)
+
+
+def test_answer_budget_leaves_room_for_thinking_models(settings, monkeypatch):
+    settings.LLM_BASE_URL = "http://x/v1"
+    calls = script(monkeypatch, FakeResponse(OK))
+    llm.answer("q", PASSAGES)
+    assert calls[0]["body"]["max_tokens"] >= 2000
+
+
 def test_connection_errors_are_retried_then_reported(settings, monkeypatch):
     settings.LLM_BASE_URL = "http://x/v1"
     calls = script(monkeypatch, *[requests.ConnectionError("refused")] * 2)
