@@ -13,4 +13,5 @@ os.environ.setdefault("EMBEDDING_BACKEND", "fastembed")
 from django.core.management import execute_from_command_line
 
 execute_from_command_line(["manage.py", "migrate", "-v0"])
-execute_from_command_line(["manage.py", "runserver", "127.0.0.1:8000", "--noreload"])
+port = os.environ.get("PORT", "8000")  # preview tools and hosts can assign a free port
+execute_from_command_line(["manage.py", "runserver", f"127.0.0.1:{port}", "--noreload"])

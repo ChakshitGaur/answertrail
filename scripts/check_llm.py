@@ -12,7 +12,12 @@ import time
 
 import requests
 
-base = os.environ.get("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/").rstrip("/")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config.env import load_dotenv  # noqa: E402
+
+load_dotenv(__import__("pathlib").Path(__file__).resolve().parent.parent / ".env")
+
+base =os.environ.get("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/").rstrip("/")
 model = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("LLM_MODEL", "gemini-3.8-flash")
 key = os.environ.get("LLM_API_KEY") or getpass.getpass("API key (hidden): ")
 headers = {"Authorization": f"Bearer {key}"}

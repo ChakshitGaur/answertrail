@@ -3,6 +3,14 @@ import pytest
 from tests import fake_llm
 
 
+@pytest.fixture(autouse=True)
+def isolated_from_local_config(settings):
+    """A developer's .env (real keys, neural embeddings) must never leak into the tests."""
+    settings.LLM_BASE_URL = settings.LLM_API_KEY = settings.LLM_MODEL = settings.LLM_FALLBACK_MODELS = ""
+    settings.ANTHROPIC_API_KEY = ""
+    settings.EMBEDDING_BACKEND = "hash"
+
+
 @pytest.fixture
 def fake_server():
     server = fake_llm.start()
