@@ -157,6 +157,25 @@ def test_answer_budget_leaves_room_for_thinking_models(settings, monkeypatch):
     assert calls[0]["body"]["max_tokens"] >= 2000
 
 
+def test_no_internet_gives_a_plain_message_not_a_list_of_models(settings, monkeypatch):
+    settings.LLM_BASE_URL = "http://x/v1"
+    settings.LLM_FALLBACK_MODELS = "backup"
+    script(monkeypatch, *[requests.ConnectionError("getaddrinfo failed")] * 4)
+    with pytest.raises(llm.LLMError) as exc:
+        llm.answer("q", PASSAGES)
+    assert "Check your internet connection" in str(exc.value)
+    assert "getaddrinfo failed" in str(exc.value)  # the detail is still there for debugging
+
+
+def test_mixed_failures_still_report_every_model(settings, monkeypatch):
+    settings.LLM_BASE_URL = "http://x/v1"
+    settings.LLM_FALLBACK_MODELS = "backup"
+    script(monkeypatch, requests.ConnectionError("down"), requests.ConnectionError("down"),
+           FakeResponse(status=503, text="busy"), FakeResponse(status=503, text="busy"))
+    with pytest.raises(llm.LLMError, match=r"all models failed \(primary, backup\)"):
+        llm.answer("q", PASSAGES)
+
+
 def test_connection_errors_are_retried_then_reported(settings, monkeypatch):
     settings.LLM_BASE_URL = "http://x/v1"
     calls = script(monkeypatch, *[requests.ConnectionError("refused")] * 2)

@@ -65,6 +65,7 @@ def _open_chat(question: str, passages: list[str], stream: bool) -> requests.Res
     deadline = time.monotonic() + _BUDGET_SECONDS
     last_error = "no attempt made"
     tried = []
+    network_failures = other_failures = 0
     for model in models:
         tried.append(model)
         # generous: "thinking" models (Gemini 3.x) spend part of this budget on reasoning first
@@ -80,16 +81,20 @@ def _open_chat(question: str, passages: list[str], stream: bool) -> requests.Res
                 resp = requests.post(url, headers=headers, json=body, timeout=_TIMEOUT, stream=stream)
             except requests.Timeout as exc:  # a slow model rarely speeds up on retry: move on
                 last_error = f"{model}: no reply within {_TIMEOUT[1]}s ({exc.__class__.__name__})"
+                other_failures += 1
                 break
             except requests.RequestException as exc:
                 last_error = f"{model}: {exc.__class__.__name__}: {exc}"
+                network_failures += 1
                 continue
             if resp.status_code in _RETRYABLE:  # overloaded / rate limited: worth another try
                 last_error = f"{model}: HTTP {resp.status_code}: {_snippet(resp)}"
+                other_failures += 1
                 resp.close()
                 continue
             if resp.status_code in _TRY_NEXT_MODEL:
                 last_error = f"{model}: HTTP {resp.status_code}: {_snippet(resp)}"
+                other_failures += 1
                 resp.close()
                 break
             if not resp.ok:
@@ -97,6 +102,11 @@ def _open_chat(question: str, passages: list[str], stream: bool) -> requests.Res
                 resp.close()
                 raise LLMError(detail)
             return resp
+    if network_failures and not other_failures:
+        raise LLMError(
+            "could not reach the language model service. Check your internet connection and try "
+            f"again in a moment. Detail: {last_error[:200]}"
+        )
     raise LLMError(f"all models failed ({', '.join(tried)}). Last error: {last_error}")
 
 
