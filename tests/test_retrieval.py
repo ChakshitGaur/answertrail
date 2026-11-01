@@ -80,7 +80,7 @@ def test_keyword_only_hits_are_scored_on_the_cosine_scale(user, monkeypatch):
     """A chunk the vector search missed but BM25 found must still carry a real cosine score."""
     docs = make_docs(user, Codes="Error ZX4417 means the pump stalled.", Other="Nothing about that here at all.")
     other_hit = retrieval.Hit(chunk=docs["Other"].chunks.first(), score=0.3)
-    monkeypatch.setattr(retrieval, "_vector_search", lambda chunks, query, k: [other_hit])
+    monkeypatch.setattr(retrieval, "_vector_hits", lambda chunks, key, query, k: [other_hit])
     hits = search(user, "ZX4417", top_k=2, hybrid=True)
     codes = next(h for h in hits if h.chunk.document.title == "Codes")
     expected = float(np.array(codes.chunk.embedding, dtype=np.float32) @ np.array(embed_query("ZX4417"), dtype=np.float32))
@@ -110,7 +110,7 @@ def test_search_never_crosses_users_or_document_scope(user):
 def test_hybrid_flag_in_settings_controls_the_default(user, settings, monkeypatch):
     make_docs(user, A="alpha beta")
     calls = []
-    monkeypatch.setattr(retrieval, "_keyword_search", lambda *a, **k: calls.append(1) or [])
+    monkeypatch.setattr(retrieval, "_keyword_hits", lambda *a, **k: calls.append(1) or [])
     settings.HYBRID_SEARCH = False
     search(user, "alpha")
     assert calls == []

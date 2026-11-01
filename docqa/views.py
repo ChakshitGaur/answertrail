@@ -87,6 +87,7 @@ def _meta(plan) -> dict:
         "mode": plan.mode,
         "searched_for": plan.searched_for,
         "best_similarity": None if plan.best_similarity is None else round(plan.best_similarity, 4),
+        "timings": plan.timings,
     }
 
 

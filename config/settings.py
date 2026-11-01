@@ -128,6 +128,13 @@ LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "")
 LLM_FALLBACK_MODELS = os.environ.get("LLM_FALLBACK_MODELS", "")  # comma separated, tried in order
+# "Thinking" models (Gemini 3.x) reason before the first word; "minimal" cut the wait from ~3-4 s to ~1.3 s
+# in measurements. Sent as reasoning_effort; a model that rejects it is retried without it. Empty = provider
+# default. The first applies to answers from documents and question rewriting, the second to general answers.
+LLM_REASONING_EFFORT = os.environ.get("LLM_REASONING_EFFORT", "")
+LLM_REASONING_EFFORT_GENERAL = os.environ.get("LLM_REASONING_EFFORT_GENERAL", "")
+# Load the neural embedding model when the server starts instead of on the first question (saves 10-20 s)
+WARMUP_EMBEDDINGS = os.environ.get("WARMUP_EMBEDDINGS", "0") == "1"
 # "hash" = offline lexical baseline; "fastembed" = neural model (pip install -r requirements-ml.txt)
 EMBEDDING_BACKEND = os.environ.get("EMBEDDING_BACKEND", "hash")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")

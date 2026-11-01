@@ -25,6 +25,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DATABASE_URL: postgres://docqa:docqa@db:5432/docqa
       EMBEDDING_BACKEND: fastembed
+      WARMUP_EMBEDDINGS: "1"
 
 volumes:
   pgdata:

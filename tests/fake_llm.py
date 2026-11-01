@@ -7,6 +7,11 @@ Behaviour is chosen by model name, so no state is needed:
   cut*      -> streams two tokens, then the connection dies mid-stream
   empty*    -> streams no text at all
   slow*     -> streams normally but 0.5 s per token (to test the Stop button)
+  always400* -> 400 "Please pass a valid API key" (Google reports a bad key as 400)
+  noeffort* -> 400 when the request carries reasoning_effort, otherwise normal
+  nullcontent* / nochoices* -> 200 with content null / an empty choices list (non-streaming)
+  special*  -> newlines, quotes, backslashes, emoji, HTML, U+2028 and CJK in the answer
+  split*    -> normal answer sent in 3-byte pieces (cuts frames and multi-byte characters)
   decline*  -> when allowed to, answers a grounded question with NOT_IN_DOCUMENTS (split over three
                chunks; "decline2" sends it in one chunk with quotes and a full stop)
   anything else -> answers "Hello wörld ✓ from <model> [1]." (non-ASCII on purpose)
@@ -59,12 +64,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": {"message": f"model {model} not found"}})
         if model.startswith("denied"):
             return self._json(401, {"error": {"message": "API key not valid"}})
+        if model.startswith("always400"):
+            return self._json(400, {"error": {"message": "Please pass a valid API key"}})
+        if model.startswith("noeffort") and "reasoning_effort" in body:
+            return self._json(400, {"error": {"message": "Request contains an invalid argument."}})
+        if model.startswith("nullcontent") and not body.get("stream"):
+            return self._json(200, {"choices": [{"message": {"content": None}, "finish_reason": "length"}]})
+        if model.startswith("nochoices") and not body.get("stream"):
+            return self._json(200, {"choices": []})
 
         messages = body.get("messages", [])
         system = messages[0]["content"] if messages else ""
         last_user = messages[-1]["content"] if messages else ""
         if model.startswith("empty"):
             tokens = []
+        elif model.startswith("special"):  # awkward characters that must survive JSON, SSE and the DOM
+            tokens = ["line1\nline2\n\nline3", ' "quoted" \\ back\\slash ', "\U0001f600 <b>x</b> </script>   é中文"]
         elif model.startswith("decline") and "NOT_IN_DOCUMENTS" in system:  # may decline grounded answers
             tokens = ["`NOT_IN_DOCUMENTS`."] if model == "decline2" else ["NOT_", "IN_DOC", "UMENTS"]
         elif "standalone search query" in system:  # the follow-up rewrite request
@@ -80,6 +95,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")  # deliberately no charset
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
+        if model.startswith("split"):  # the whole stream in 3-byte pieces, which cuts frames and characters
+            payload = "".join(
+                f"data: {json.dumps({'choices': [{'delta': {'content': t}}]})}\n\n" for t in tokens
+            ).encode() + b"data: [DONE]\n\n"
+            for i in range(0, len(payload), 3):
+                self._chunk(payload[i : i + 3])
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+            return
         for i, token in enumerate(tokens):
             if model.startswith("cut") and i == 2:
                 self.close_connection = True

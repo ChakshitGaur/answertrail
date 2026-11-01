@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass, field
 
 from django.conf import settings
@@ -45,6 +46,7 @@ class Plan:
     # Auto only: the model may decline when the passages turn out not to answer the question, and the
     # caller then switches to a general answer (a similarity score alone can't tell on real documents)
     can_decline: bool = False
+    timings: dict[str, int] = field(default_factory=dict)  # milliseconds spent rewriting and searching
 
 
 def plan_answer(
@@ -59,9 +61,13 @@ def plan_answer(
     if mode == "general":
         return Plan(mode="general")
 
+    started = time.perf_counter()
     query = llm.condense_question(question, history)
+    rewritten = time.perf_counter()
     result = retrieval.search_ex(user, query, top_k, document_id)
+    done = time.perf_counter()
     searched_for = query if query != question else None
+    timings = {"rewrite_ms": round((rewritten - started) * 1000), "search_ms": round((done - rewritten) * 1000)}
 
     if result.hits and result.best_similarity >= relevance_threshold():
         return Plan(
@@ -71,8 +77,15 @@ def plan_answer(
             searched_for=searched_for,
             best_similarity=result.best_similarity,
             can_decline=mode == "auto",
+            timings=timings,
         )
     if mode == "documents":
         message = llm.NOT_IN_DOCUMENTS if result.hits else llm.NO_RESULTS
-        return Plan(mode="not_found", message=message, searched_for=searched_for, best_similarity=result.best_similarity)
-    return Plan(mode="general", searched_for=searched_for, best_similarity=result.best_similarity)
+        return Plan(
+            mode="not_found",
+            message=message,
+            searched_for=searched_for,
+            best_similarity=result.best_similarity,
+            timings=timings,
+        )
+    return Plan(mode="general", searched_for=searched_for, best_similarity=result.best_similarity, timings=timings)

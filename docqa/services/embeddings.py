@@ -1,9 +1,14 @@
 import hashlib
+import logging
 import re
+import threading
+import time
 from functools import lru_cache
 
 import numpy as np
 from django.conf import settings
+
+log = logging.getLogger(__name__)
 
 _TOKEN = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
@@ -32,11 +37,31 @@ def _hash_embed(text: str) -> list[float]:
     return vec.tolist()
 
 
+_model_lock = threading.Lock()
+
+
 @lru_cache(maxsize=1)
-def _fastembed_model():
+def _load_model():
     from fastembed import TextEmbedding
 
     return TextEmbedding(model_name=settings.EMBEDDING_MODEL)
+
+
+def _fastembed_model():
+    # one load only, even if the warm-up thread and the first request arrive together
+    with _model_lock:
+        return _load_model()
+
+
+def warm_up() -> float | None:
+    """Load the embedding model now. Returns the seconds it took, or None if it failed (never raises)."""
+    started = time.perf_counter()
+    try:
+        embed_query("warm up")
+    except Exception:  # a missing model must not take the server down; the first question will report it
+        log.exception("embedding warm-up failed")
+        return None
+    return time.perf_counter() - started
 
 
 def _check_dim(vectors: list[list[float]]) -> list[list[float]]:
