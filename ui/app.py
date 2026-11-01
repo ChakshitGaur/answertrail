@@ -1,4 +1,4 @@
-"""Streamlit chat UI for the rag-docqa API. Run the API first (see README)."""
+"""Streamlit chat UI for the Answer Trail API. Run the API first (see README)."""
 
 import os
 
