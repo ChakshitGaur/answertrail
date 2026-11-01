@@ -3,7 +3,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 
-from docqa.models import Chunk
+from docqa.models import Chunk, Document
 from docqa.services import retrieval
 from docqa.services.embeddings import embed_query
 from docqa.services.ingest import ingest_document
@@ -108,17 +108,54 @@ def test_search_never_crosses_users_or_document_scope(user):
     assert search(bob, "launch code", top_k=10)[0].chunk.document.title == "Bobs"
 
 
-@pytest.mark.skipif(connection.vendor != "postgresql", reason="the HNSW index only exists on PostgreSQL")
-def test_postgres_searches_turn_on_iterative_index_scans(user):
-    """Without this setting the index returns its nearest rows before the owner filter, so a user whose chunks
-    are not the globally nearest can get too few results (CI showed none after many rolled-back inserts)."""
-    make_docs(user, Refunds="Refunds are accepted within 30 days.")
+POSTGRES_ONLY = pytest.mark.skipif(connection.vendor != "postgresql", reason="needs PostgreSQL with pgvector")
+
+
+@POSTGRES_ONLY
+def test_postgres_searches_are_exact_by_default(user):
+    """The approximate HNSW index behind an owner filter can miss a user's few rows (CI showed no results at all
+    after many rolled-back inserts), so by default the index is not used and the user's rows are ranked exactly."""
+    make_docs(user, Refunds="Refunds are accepted within 30 days.", Plants="Photosynthesis happens in leaves.")
+    with transaction.atomic():
+        retrieval._force_exact_scan()
+        with connection.cursor() as cursor:
+            cursor.execute("SHOW enable_indexscan")
+            assert cursor.fetchone()[0] == "off"
+    hits = search(user, "refund window", top_k=2, hybrid=False)
+    assert [h.chunk.document.title for h in hits][0] == "Refunds" and len(hits) == 2
+
+
+@POSTGRES_ONLY
+def test_a_users_results_are_never_crowded_out_by_other_peoples_nearer_chunks(user):
+    crowd = get_user_model().objects.create_user("crowd")
+    doc = Document.objects.create(owner=crowd, title="Crowd")
+    base = np.array(embed_query("swordfish launch code"), dtype=np.float32)
+    rng = np.random.default_rng(0)
+    nearby = []
+    for i in range(300):  # far more than an index's default candidate list of 40
+        v = base + rng.normal(scale=0.01, size=base.shape).astype("float32")
+        nearby.append(Chunk(document=doc, index=i, text=f"crowd chunk {i}", embedding=(v / np.linalg.norm(v)).tolist()))
+    Chunk.objects.bulk_create(nearby)
+    ingest_document(user, "Mine", "A note about growing tomatoes in a sunny garden.")
+    for hybrid in (False, True):
+        hits = search(user, "swordfish launch code", top_k=3, hybrid=hybrid)
+        assert hits and {h.chunk.document.title for h in hits} == {"Mine"}
+
+
+@POSTGRES_ONLY
+def test_index_mode_turns_on_iterative_index_scans(user, settings):
+    settings.PGVECTOR_USE_INDEX = True
     with transaction.atomic():
         retrieval._enable_iterative_scan()
         with connection.cursor() as cursor:
             cursor.execute("SHOW hnsw.iterative_scan")
             assert cursor.fetchone()[0] == "relaxed_order"
-    assert search(user, "refund window", top_k=2, hybrid=False)  # and a real search still works end to end
+
+
+def test_the_index_is_opt_in(settings):
+    from django.conf import settings as real
+
+    assert real.PGVECTOR_USE_INDEX is False  # exact per-user search unless asked otherwise
 
 
 def test_hybrid_flag_in_settings_controls_the_default(user, settings, monkeypatch):

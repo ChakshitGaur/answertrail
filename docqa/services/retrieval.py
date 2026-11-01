@@ -223,13 +223,13 @@ def _vector_hits(chunks, key: tuple, query: list[float], top_k: int) -> list[Hit
 
 
 def _enable_iterative_scan() -> None:
-    """Make the HNSW index keep scanning until enough rows survive the owner filter (pgvector 0.8+).
+    """Index mode: make the HNSW index keep scanning until enough rows survive the owner filter (pgvector 0.8+).
 
-    The index returns its nearest candidates first and the owner/scope filter is applied afterwards, so
-    without this a user whose chunks are not among the globally nearest ones (other users' chunks, or
-    entries of deleted documents not yet vacuumed) can get fewer results than asked for, even none.
-    The setting lasts until the end of the surrounding transaction; an older pgvector that does not know
-    it is ignored (the savepoint stops the error from poisoning the transaction).
+    The index returns its nearest candidates first and the owner/scope filter is applied afterwards, so a
+    user whose chunks are not among the globally nearest ones (other users' chunks, entries of deleted
+    documents not yet vacuumed) can get fewer results than asked for, even none. The setting lasts until the
+    end of the surrounding transaction; an older pgvector that does not know it is ignored (the savepoint
+    stops the error from poisoning the transaction).
     """
     try:
         with transaction.atomic(), connection.cursor() as cursor:
@@ -238,17 +238,28 @@ def _enable_iterative_scan() -> None:
         log.info("pgvector without iterative index scans: filtered searches may return fewer results")
 
 
+def _force_exact_scan() -> None:
+    """Default mode: do not use the HNSW index, so the owner filter runs first and the distance ordering
+    is exact over just that user's chunks. Every question is filtered to one user's rows, a small set, so this
+    is fast and, unlike an approximate index behind a filter, never misses rows."""
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL enable_indexscan = off")
+
+
 def _search_pgvector(chunks, query: list[float], top_k: int) -> list[Hit]:
-    # `<=>` is cosine distance; served by the HNSW index when the planner picks it.
+    # `<=>` is cosine distance
     ranked_query = chunks.annotate(
         distance=RawSQL(
             "docqa_chunk.embedding <=> %s::vector", [json.dumps(query)], output_field=FloatField()
         )
     ).order_by("distance")[:top_k]
     with transaction.atomic():  # SET LOCAL needs a transaction to live in
-        _enable_iterative_scan()
+        if settings.PGVECTOR_USE_INDEX:
+            _enable_iterative_scan()
+        else:
+            _force_exact_scan()
         ranked = list(ranked_query)
-    ranked.sort(key=lambda c: c.distance)  # relaxed_order may return neighbours slightly out of order
+    ranked.sort(key=lambda c: c.distance)  # relaxed_order (index mode) may return neighbours slightly out of order
     return [Hit(chunk=c, score=1.0 - c.distance) for c in ranked]
 
 

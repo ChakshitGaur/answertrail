@@ -14,7 +14,7 @@ clickable citations, so every claim can be checked against its source.
 - **Streaming chat UI** served by Django itself (plain HTML/JS, no build step), with Stop, citations, drag-and-drop upload, dark/light theme and a phone layout
 - **Django REST API** with token auth and per-user isolation: users only ever search their own documents
 - **Free or paid models**: any OpenAI-compatible endpoint (Ollama, Gemini, Groq, OpenRouter) or Anthropic, with automatic retry and model fallback when a provider is overloaded
-- **PostgreSQL + pgvector** (HNSW index) in production, SQLite for local use
+- **PostgreSQL + pgvector** in production (exact per-user search; HNSW index available for huge collections), SQLite for local use
 - **Retrieval eval harness** that measures hit-rate@k and MRR, plus Python and JavaScript tests and CI
 
 ## Quick start
@@ -136,6 +136,7 @@ long an answer took. Notes:
 | `HYBRID_SEARCH` | `1` | vectors + BM25 keyword search, fused; `0` for vectors only |
 | `LLM_REASONING_EFFORT` | empty | `minimal` recommended: reasoning level for answers from documents and follow-up rewrites |
 | `LLM_REASONING_EFFORT_GENERAL` | empty | the same for general-knowledge answers (leave empty for hard questions) |
+| `PGVECTOR_USE_INDEX` | `0` | `1` lets PostgreSQL use the approximate HNSW index (only for very large collections) |
 | `WARMUP_EMBEDDINGS` | `0` | `1` loads the search model at startup (the launch script and docker-compose set it) |
 | `RELEVANCE_THRESHOLD` | per embedder | best-passage similarity needed to answer from documents (see Answer modes) |
 | `DATABASE_URL` | SQLite file | `postgres://user:pass@host:5432/db` enables pgvector |
@@ -181,7 +182,7 @@ question (+ recent chat) -> [follow-up? rewrite into a standalone query]
 ```
 
 Chunks are whole sentences packed up to the size limit, with trailing sentences repeated as overlap.
-Vector search is SQL (`<=>` with an HNSW index) on Postgres and a numpy scan on SQLite. BM25 runs in Python
+Vector search is SQL (`<=>`, exact over the caller's own chunks) on Postgres and a numpy scan on SQLite. BM25 runs in Python
 over the caller's chunk text, which is fine for thousands of chunks; move it to Postgres full-text search
 for much larger collections. The grounded prompt tells the model to answer only from the numbered passages
 and to cite them, and the UI turns `[1]` into a button that opens and highlights that source. Retrieved
@@ -257,11 +258,12 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 - A general-knowledge answer can be wrong or out of date. It is labelled, but not fact-checked.
 - Follow-up rewriting costs one extra model call, and a model that rewrites badly can steer the search.
   The "Searched for" line shows what was searched.
-- On PostgreSQL the HNSW index returns its nearest rows before the owner filter is applied, so a user whose
-  chunks are not the globally nearest could get too few results, even none (CI caught this after thousands of
-  rolled-back test inserts). Each search now enables pgvector 0.8 iterative scans (`hnsw.iterative_scan`) so
-  the index keeps scanning until enough of the user's rows are found, and a Postgres-only test covers it. An
-  older pgvector ignores the setting and keeps the old behaviour.
+- On PostgreSQL, vector search is **exact per user** by default: the owner filter runs first and only that
+  user's chunks are ranked. The approximate HNSW index is not used, because behind a filter it can miss a
+  user's rows (CI showed searches returning nothing once earlier tests had inserted and rolled back
+  thousands of chunks). That is fast for the sizes this app targets (one user's chunks, up to the order of
+  100,000). For a very large single collection set `PGVECTOR_USE_INDEX=1`: searches then use the index with
+  pgvector 0.8 iterative scans, which reduces but cannot remove the risk of too few results.
 - Ingestion is synchronous (about 26 chunks per second on a laptop, so a 5 MB file can take minutes inside one
   request), and scanned (image-only) PDFs are rejected because there is no OCR.
 - Summaries read a spread sample (up to 8-10 passages), so details between the samples are not seen. For a
