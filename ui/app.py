@@ -8,7 +8,7 @@ import streamlit as st
 DEFAULT_API = os.environ.get("RAG_API_URL", "http://127.0.0.1:8000/api")
 FALLBACK_MARKER = "[extractive fallback"  # server prefix when no LLM is configured
 
-st.set_page_config(page_title="Doc Q&A", page_icon=":books:", layout="wide")
+st.set_page_config(page_title="Answer Trail", page_icon=":books:", layout="wide")
 
 
 # ---------- API helpers ----------
@@ -50,7 +50,7 @@ st.session_state.setdefault("messages", [])
 
 # ---------- sign-in (main area) ----------
 if not st.session_state.token:
-    st.title("Doc Q&A")
+    st.title("Answer Trail")
     st.write("Upload your documents and ask questions. Answers cite the passages they came from.")
     _, centre, _ = st.columns([1, 2, 1])
     with centre:
@@ -66,7 +66,7 @@ if not st.session_state.token:
 
 # ---------- sidebar ----------
 with st.sidebar:
-    st.title("Doc Q&A")
+    st.title("Answer Trail")
     st.caption(f"Signed in as **{st.session_state.username}**")
     if st.button("Sign out", use_container_width=True):
         st.session_state.token = None
