@@ -27,9 +27,15 @@ def extract_text(filename: str, data: bytes) -> str:
     raise IngestError("Unsupported file type; use .pdf, .txt or .md")
 
 
+def _clean(value: str) -> str:
+    """PostgreSQL text columns cannot hold NUL characters (PDFs and binary-ish files can contain them)."""
+    return value.replace(chr(0), "")
+
+
 @transaction.atomic
 def ingest_document(user, title: str, text: str) -> Document:
-    pieces = chunk_text(text, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
+    title = _clean(title).strip()[:255] or "Untitled"
+    pieces = chunk_text(_clean(text), settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
     if not pieces:
         raise IngestError("Document contains no extractable text")
     vectors = embed_passages(pieces)

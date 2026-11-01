@@ -9,6 +9,7 @@ os.chdir(ROOT)
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 os.environ.setdefault("EMBEDDING_BACKEND", "fastembed")
+os.environ.setdefault("WARMUP_EMBEDDINGS", "1")  # load the search model now, not on the first question
 
 from django.core.management import execute_from_command_line
 

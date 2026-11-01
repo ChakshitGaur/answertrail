@@ -11,6 +11,23 @@ def isolated_from_local_config(settings):
     settings.EMBEDDING_BACKEND = "hash"
     # the hash embedder's scores are tiny, so by default no cutoff; routing tests set their own
     settings.RELEVANCE_THRESHOLD = -1.0
+    settings.LLM_REASONING_EFFORT = settings.LLM_REASONING_EFFORT_GENERAL = ""
+    settings.WARMUP_EMBEDDINGS = False
+    from docqa.services import llm, retrieval
+
+    from django.core.cache import cache
+
+    retrieval.clear_cache()  # every test gets a fresh database whose ids start over, so never reuse a corpus
+    llm._NO_EFFORT.clear()
+    cache.clear()  # rate-limit counters live in the cache; one test's requests must not throttle the next
+
+
+@pytest.fixture
+def no_throttle(monkeypatch):
+    """For tests that deliberately send hundreds of requests."""
+    from rest_framework.throttling import SimpleRateThrottle
+
+    monkeypatch.setattr(SimpleRateThrottle, "THROTTLE_RATES", {"user": "1000000/min"})
 
 
 @pytest.fixture

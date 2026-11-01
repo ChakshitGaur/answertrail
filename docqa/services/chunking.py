@@ -7,8 +7,8 @@ def _split_long(piece: str, size: int) -> list[str]:
     """Break a piece longer than `size` (e.g. a code block) at spaces."""
     parts = []
     while len(piece) > size:
-        cut = piece.rfind(" ", size // 2, size)
-        cut = cut if cut != -1 else size
+        cut = piece.rfind(" ", 1, size + 1)  # the last space that fits, so a word that fits is never split
+        cut = cut if cut != -1 else size  # a word longer than the window has to be cut
         parts.append(piece[:cut].strip())
         piece = piece[cut:].strip()
     if piece:
@@ -48,6 +48,9 @@ def chunk_text(text: str, size: int, overlap: int) -> list[str]:
                     break
                 tail.insert(0, prev)
                 tail_len += len(prev) + (1 if len(tail) > 1 else 0)
+            while tail and tail_len + 1 + len(unit) > size:  # the overlap must leave room for the new sentence
+                tail.pop(0)
+                tail_len = len(" ".join(tail))
             current, length = tail, tail_len
             added = len(unit) + (1 if current else 0)
         current.append(unit)

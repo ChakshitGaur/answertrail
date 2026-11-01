@@ -130,7 +130,37 @@ def _models() -> list[str]:
     return list(dict.fromkeys(n.strip() for n in names if n.strip()))
 
 
-def _open_chat(messages: list[dict], stream: bool) -> requests.Response:
+_NO_EFFORT: set[str] = set()  # models that rejected reasoning_effort; not asked again this process
+
+# Words that usually mean "this question depends on the conversation so far"
+_REFERENCES = frozenset(
+    "it its this that these those he she they them his her their him there here also too another other "
+    "former latter above same previous earlier more else instead then".split()
+)
+_FOLLOW_UP_OPENERS = ("and ", "but ", "so ", "what about", "how about", "what else", "why ", "how come")
+
+
+def looks_like_followup(question: str) -> bool:
+    """Cheap check for whether a question needs the chat history to make sense.
+
+    Rewriting costs a model call, so a long, self-contained question is searched as typed. Short
+    questions, ones starting like a continuation, or ones with a reference word ("it", "he", "that")
+    are rewritten. Errs on the side of rewriting.
+    """
+    text = question.strip().lower()
+    words = re.findall(r"[a-z0-9']+", text)
+    return (
+        len(words) <= 8
+        or text.startswith(_FOLLOW_UP_OPENERS)
+        or any(w in _REFERENCES for w in words)
+    )
+
+
+def _effort_for(grounded: bool) -> str:
+    return settings.LLM_REASONING_EFFORT if grounded else settings.LLM_REASONING_EFFORT_GENERAL
+
+
+def _open_chat(messages: list[dict], stream: bool, effort: str = "") -> requests.Response:
     """POST /chat/completions on an OpenAI-compatible server (Ollama, Groq, Gemini, OpenRouter...).
 
     An overloaded model (503/429) is retried briefly, then the next model in the list is tried.
@@ -153,11 +183,18 @@ def _open_chat(messages: list[dict], stream: bool) -> requests.Response:
         body = {"model": model, "max_tokens": 2000, "temperature": 0.2, "messages": messages}
         if stream:
             body["stream"] = True
-        for attempt in range(_ATTEMPTS):
+        sent_effort = bool(effort) and model not in _NO_EFFORT
+        if sent_effort:
+            body["reasoning_effort"] = effort
+        dropped_effort = skip_backoff = False
+        attempt = 0
+        while attempt < _ATTEMPTS:
+            attempt += 1
             if time.monotonic() > deadline:
                 raise LLMError(f"ran out of time. Tried {', '.join(tried)}. Last error: {last_error}")
-            if attempt:
-                time.sleep(_BACKOFF_SECONDS * attempt)
+            if attempt > 1 and not skip_backoff:
+                time.sleep(_BACKOFF_SECONDS * (attempt - 1))
+            skip_backoff = False
             try:
                 resp = requests.post(url, headers=headers, json=body, timeout=_TIMEOUT, stream=stream)
             except requests.Timeout as exc:  # a slow model rarely speeds up on retry: move on
@@ -167,6 +204,13 @@ def _open_chat(messages: list[dict], stream: bool) -> requests.Response:
             except requests.RequestException as exc:
                 last_error = f"{model}: {exc.__class__.__name__}: {exc}"
                 network_failures += 1
+                continue
+            if resp.status_code == 400 and sent_effort:
+                # this model may not accept reasoning_effort: retry at once without it (not counted)
+                resp.close()
+                sent_effort, dropped_effort, skip_backoff = False, True, True
+                body.pop("reasoning_effort", None)
+                attempt -= 1
                 continue
             if resp.status_code in _RETRYABLE:  # overloaded / rate limited: worth another try
                 last_error = f"{model}: HTTP {resp.status_code}: {_snippet(resp)}"
@@ -182,6 +226,8 @@ def _open_chat(messages: list[dict], stream: bool) -> requests.Response:
                 detail = f"{model}: HTTP {resp.status_code}: {_snippet(resp)}"
                 resp.close()
                 raise LLMError(detail)
+            if dropped_effort:  # it works without the setting, so the setting was the problem
+                _NO_EFFORT.add(model)
             return resp
     if network_failures and not other_failures:
         raise LLMError(
@@ -191,16 +237,22 @@ def _open_chat(messages: list[dict], stream: bool) -> requests.Response:
     raise LLMError(f"all models failed ({', '.join(tried)}). Last error: {last_error}")
 
 
-def _complete_openai(messages: list[dict]) -> str:
-    resp = _open_chat(messages, stream=False)
+def _complete_openai(messages: list[dict], effort: str = "") -> str:
+    resp = _open_chat(messages, stream=False, effort=effort)
     try:
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        choice = resp.json()["choices"][0]
+        content = choice["message"]["content"]
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
         raise LLMError(f"unexpected response ({exc.__class__.__name__}): {_snippet(resp)}") from exc
+    if not isinstance(content, str) or not content.strip():
+        # providers send null or empty text when an answer is cut off or blocked (finish_reason says why)
+        reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+        raise LLMError("the model returned an empty answer" + (f" (finish reason: {reason})" if reason else ""))
+    return content.strip()
 
 
-def _stream_openai(messages: list[dict]) -> Iterator[str]:
-    resp = _open_chat(messages, stream=True)
+def _stream_openai(messages: list[dict], effort: str = "") -> Iterator[str]:
+    resp = _open_chat(messages, stream=True, effort=effort)
     resp.encoding = "utf-8"  # event streams carry no charset; the default would garble non-ASCII
     produced = False
     try:
@@ -212,9 +264,9 @@ def _stream_openai(messages: list[dict]) -> Iterator[str]:
                 break
             try:
                 delta = json.loads(data)["choices"][0].get("delta", {}).get("content")
-            except (ValueError, KeyError, IndexError, TypeError):
+            except (ValueError, KeyError, IndexError, TypeError, AttributeError):
                 continue  # keep-alives or provider-specific frames
-            if delta:
+            if isinstance(delta, str) and delta:  # role-only, null and non-text deltas carry no words
                 produced = True
                 yield delta
     except requests.RequestException as exc:
@@ -239,15 +291,15 @@ def _stream_anthropic(messages: list[dict]) -> Iterator[str]:
         raise LLMError(f"{exc.__class__.__name__}: {exc}") from exc
 
 
-def _complete(messages: list[dict]) -> str:
+def _complete(messages: list[dict], effort: str = "") -> str:
     if settings.LLM_BASE_URL:
-        return _complete_openai(messages)
+        return _complete_openai(messages, effort)
     return "".join(_stream_anthropic(messages))
 
 
-def _stream(messages: list[dict]) -> Iterator[str]:
+def _stream(messages: list[dict], effort: str = "") -> Iterator[str]:
     if settings.LLM_BASE_URL:
-        yield from _stream_openai(messages)
+        yield from _stream_openai(messages, effort)
     else:
         yield from _stream_anthropic(messages)
 
@@ -268,7 +320,10 @@ def answer(
     """
     if not is_configured():
         return FALLBACK_PREFIX + passages[0] if passages else NO_MODEL_FOR_GENERAL
-    text = _complete(build_messages(question, passages, history, allow_decline and bool(passages)))
+    text = _complete(
+        build_messages(question, passages, history, allow_decline and bool(passages)),
+        _effort_for(bool(passages)),
+    )
     if allow_decline and passages and declined(text):
         raise NotInDocuments
     return text
@@ -290,7 +345,10 @@ def stream_answer(
     if not is_configured():
         yield FALLBACK_PREFIX + passages[0] if passages else NO_MODEL_FOR_GENERAL
         return
-    stream = _stream(build_messages(question, passages, history, allow_decline and bool(passages)))
+    stream = _stream(
+        build_messages(question, passages, history, allow_decline and bool(passages)),
+        _effort_for(bool(passages)),
+    )
     if not (allow_decline and passages):
         yield from stream
         return
@@ -317,7 +375,7 @@ def condense_question(question: str, history: list[dict] | None) -> str:
     used, so a follow-up simply searches with what the user typed.
     """
     prior = clean_history(history)
-    if not prior or not is_configured():
+    if not prior or not is_configured() or not looks_like_followup(question):
         return question
     messages = [
         {"role": "system", "content": CONDENSE_PROMPT},
@@ -325,7 +383,7 @@ def condense_question(question: str, history: list[dict] | None) -> str:
         {"role": "user", "content": question},
     ]
     try:
-        rewritten = _complete(messages).strip().strip('"')
+        rewritten = _complete(messages, settings.LLM_REASONING_EFFORT).strip().strip('"')
     except LLMError as exc:
         log.warning("could not rewrite follow-up question: %s", exc)
         return question

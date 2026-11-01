@@ -24,7 +24,7 @@ def client():
 def stream_of(monkeypatch, settings, *pieces):
     """Make the streaming model emit exactly these pieces."""
     settings.LLM_BASE_URL = "http://x/v1"
-    monkeypatch.setattr(llm, "_stream", lambda messages: iter(pieces))
+    monkeypatch.setattr(llm, "_stream", lambda messages, effort="": iter(pieces))
 
 
 def test_decline_instruction_is_added_only_when_allowed_and_grounded():

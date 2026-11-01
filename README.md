@@ -9,10 +9,12 @@ clickable citations, so every claim can be checked against its source.
 - **Retrieval-augmented generation (RAG)** with sentence-aware chunking, local neural embeddings, and hybrid search (vectors + BM25 keywords, fused with reciprocal rank fusion)
 - **Three answer modes**: *Documents only* (cited, or "not found"), *Auto* (documents when they cover the question, otherwise general knowledge, clearly labelled), and *General chat*
 - **Conversation memory**: follow-ups like "and the window?" are rewritten into standalone searches
+- **Summaries that work**: "summarize this document" and "what are the key points?" read passages spread across the document, since no single passage resembles such a request
+- **Fast**: the model's reasoning is turned down (first word in about 1.3 s instead of 3-4 s), the search model loads at startup, and search takes about 10-20 ms per question however large the collection (see Speed)
 - **Streaming chat UI** served by Django itself (plain HTML/JS, no build step), with Stop, citations, drag-and-drop upload, dark/light theme and a phone layout
 - **Django REST API** with token auth and per-user isolation: users only ever search their own documents
 - **Free or paid models**: any OpenAI-compatible endpoint (Ollama, Gemini, Groq, OpenRouter) or Anthropic, with automatic retry and model fallback when a provider is overloaded
-- **PostgreSQL + pgvector** (HNSW index) in production, SQLite for local use
+- **PostgreSQL + pgvector** in production (exact per-user search; HNSW index available for huge collections), SQLite for local use
 - **Retrieval eval harness** that measures hit-rate@k and MRR, plus Python and JavaScript tests and CI
 
 ## Quick start
@@ -31,6 +33,13 @@ Without a language model configured, the app still works and shows the best matc
 a written answer. To get written answers, pick one option below.
 
 On Windows, `scripts/start.ps1` asks for your key (hidden), starts the server and opens the browser.
+
+## Using it
+
+Upload PDF, TXT or Markdown files, then ask. Click a suggestion, or try: "summarize this document", "what
+are the key points?", then a follow-up such as "and the second one?". Click a `[1]` to see the exact passage,
+with your question's words highlighted. **Copy** copies an answer, **Try again** re-asks after an error,
+**Stop** (or Esc) ends an answer, **New chat** clears the memory. `/` or Ctrl+K focuses the question box.
 
 ## Answer modes
 
@@ -94,6 +103,29 @@ Free tiers change their limits and model names, so check the provider's docs.
 immediately, since another model cannot fix it. If everything fails the UI shows the provider's own error
 message, and the retrieved sources are still shown.
 
+## Speed
+
+Where the time goes for one question, and what was done about it (measured on a laptop with 7.6 GB of RAM,
+free-tier Gemini; your numbers will differ):
+
+| Step | Before | Now | How |
+|---|---|---|---|
+| Model's first word | 3.3-4.3 s | 1.2-1.5 s | `LLM_REASONING_EFFORT=minimal`; answers to the same questions were equally correct on the samples tried |
+| First question after a server start | +10-20 s | +0 s | the search model loads in the background at startup (`WARMUP_EMBEDDINGS=1`) |
+| Search, 1,655 / 5,655 / 20,655 chunks | 0.46 / 1.5 / 8.4 s | 9 / 11 / 19 ms | per-user cache: embeddings and BM25 inverted index built once, validated by one cheap query |
+| First question after an upload | same as above | 0 | the cache is built during the upload |
+| Rewriting a follow-up | one model call | skipped unless the question looks like a follow-up | short questions and ones with "it/he/that" are still rewritten |
+| An unrelated question in Auto mode | grounded call, decline, then general (about 12 s) | the same, now about 4-5 s | the decline check also runs at minimal reasoning |
+
+Every response reports `timings` (`rewrite_ms`, `search_ms`) so slowness can be traced, and the UI shows how
+long an answer took. Notes:
+- `minimal` reasoning suits answering from passages. For hard reasoning or coding questions in General mode,
+  set `LLM_REASONING_EFFORT_GENERAL=` (empty) to let the model think. I checked two general questions, not a
+  benchmark.
+- A model that rejects `reasoning_effort` (flash-lite rejected `none`) is retried without it and remembered.
+- Ingestion is still about 26 chunks per second on this laptop (a 200 KB document takes about 20 s) and runs
+  inside the upload request; a background queue is the next step for large files.
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -102,6 +134,10 @@ message, and the retrieved sources are still shown.
 | `EMBEDDING_DIM` | `384` | must match the model; changing it means recreating the chunk table |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | `500` / `100` | characters per chunk / overlap between chunks |
 | `HYBRID_SEARCH` | `1` | vectors + BM25 keyword search, fused; `0` for vectors only |
+| `LLM_REASONING_EFFORT` | empty | `minimal` recommended: reasoning level for answers from documents and follow-up rewrites |
+| `LLM_REASONING_EFFORT_GENERAL` | empty | the same for general-knowledge answers (leave empty for hard questions) |
+| `PGVECTOR_USE_INDEX` | `0` | `1` lets PostgreSQL use the approximate HNSW index (only for very large collections) |
+| `WARMUP_EMBEDDINGS` | `0` | `1` loads the search model at startup (the launch script and docker-compose set it) |
 | `RELEVANCE_THRESHOLD` | per embedder | best-passage similarity needed to answer from documents (see Answer modes) |
 | `DATABASE_URL` | SQLite file | `postgres://user:pass@host:5432/db` enables pgvector |
 | `MAX_UPLOAD_BYTES` | 5 MB | upload limit (the UI checks the same limit) |
@@ -146,7 +182,7 @@ question (+ recent chat) -> [follow-up? rewrite into a standalone query]
 ```
 
 Chunks are whole sentences packed up to the size limit, with trailing sentences repeated as overlap.
-Vector search is SQL (`<=>` with an HNSW index) on Postgres and a numpy scan on SQLite. BM25 runs in Python
+Vector search is SQL (`<=>`, exact over the caller's own chunks) on Postgres and a numpy scan on SQLite. BM25 runs in Python
 over the caller's chunk text, which is fine for thousands of chunks; move it to Postgres full-text search
 for much larger collections. The grounded prompt tells the model to answer only from the numbered passages
 and to cite them, and the UI turns `[1]` into a button that opens and highlights that source. Retrieved
@@ -188,14 +224,26 @@ sentence-aware chunks it ranks 1st.
 ## Tests
 
 ```bash
-pytest -q                                   # API, modes, retrieval, chunking, LLM client, streaming, pages
-node --test "tests/js/**/*.test.js"         # UI logic: SSE parsing, safe rendering, history, validation
+pytest -q                                   # about 300 tests: API, modes, retrieval, speed, LLM client, streaming, robustness
+node --test "tests/js/**/*.test.js"         # about 40 tests: SSE parsing, safe rendering, history, formatting
+python tests/e2e/server.py                  # browser checks, see tests/e2e/README.md
 ```
 
+What the suites cover beyond the happy path:
+- **Fuzzing**: random Unicode text through the chunker (nothing lost, no chunk over the limit), junk JSON
+  bodies at every endpoint (never a 5xx), odd authorization headers, malformed and encrypted PDFs, NUL bytes,
+  over-long names, and 4,000 random strings through the answer renderer (output is always well-formed and
+  never contains an unescaped tag).
+- **Odd model replies**: null or empty text, non-text stream frames, an error object mid-stream, a stream cut
+  into 3-byte pieces (splitting frames and multi-byte characters), a connection that dies halfway, overload,
+  unknown models, a rejected `reasoning_effort`.
+- **Concurrency and isolation**: two streams in flight at once, a client that disconnects mid-answer, and
+  one user never seeing another's documents through search, overview, scoping or the cache.
+- **Mutation checks**: breaking the relevance comparison or the HTML escaping makes tests fail.
+
 The streaming and failover tests run against a real local HTTP server that imitates an OpenAI-style
-streaming API (`tests/fake_llm.py`). It can return 503s, unknown models, bad keys, a connection that dies
-mid-stream and non-ASCII text, and it answers differently for grounded, general and rewrite requests so the
-tests can check which kind of call the app made. Run it by hand with `python tests/fake_llm.py 8765`.
+streaming API (`tests/fake_llm.py`), and it answers differently for grounded, general and rewrite requests so
+the tests can check which kind of call the app made. Run it by hand with `python tests/fake_llm.py 8765`.
 Tests that need the neural model are skipped when `fastembed` is not installed.
 
 CI (`.github/workflows/ci.yml`) runs the Python and JS tests, a production `collectstatic`, and a second
@@ -210,10 +258,21 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 - A general-knowledge answer can be wrong or out of date. It is labelled, but not fact-checked.
 - Follow-up rewriting costs one extra model call, and a model that rewrites badly can steer the search.
   The "Searched for" line shows what was searched.
-- Retrieval filters by owner after the HNSW scan, so a user with few chunks among many may get fewer than
-  `top_k` results; pgvector 0.8 iterative scans address this.
-- Ingestion is synchronous, and scanned (image-only) PDFs are rejected because there is no OCR.
+- On PostgreSQL, vector search is **exact per user** by default: the owner filter runs first and only that
+  user's chunks are ranked. The approximate HNSW index is not used, because behind a filter it can miss a
+  user's rows (CI showed searches returning nothing once earlier tests had inserted and rolled back
+  thousands of chunks). That is fast for the sizes this app targets (one user's chunks, up to the order of
+  100,000). For a very large single collection set `PGVECTOR_USE_INDEX=1`: searches then use the index with
+  pgvector 0.8 iterative scans, which reduces but cannot remove the risk of too few results.
+- Ingestion is synchronous (about 26 chunks per second on a laptop, so a 5 MB file can take minutes inside one
+  request), and scanned (image-only) PDFs are rejected because there is no OCR.
+- Summaries read a spread sample (up to 8-10 passages), so details between the samples are not seen. For a
+  specific topic, ask about the topic.
+- The search cache lives in each server process's memory (up to four users or scopes, 50,000 chunks each), so
+  several server workers each keep their own copy.
 - Chat history lives in the browser tab only and is lost on reload.
+- Free model tiers have quotas. When one is used up the app falls back to the next model and, if all fail,
+  says so with the provider's message.
 
 ## Older Streamlit UI
 
