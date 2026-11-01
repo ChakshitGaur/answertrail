@@ -1,4 +1,4 @@
-# rag-docqa
+# Answer Trail
 
 Ask questions about your own documents and get answers that cite the passages they came from.
 
