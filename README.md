@@ -273,8 +273,3 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 - Chat history lives in the browser tab only and is lost on reload.
 - Free model tiers have quotas. When one is used up the app falls back to the next model and, if all fail,
   says so with the provider's message.
-
-## Older Streamlit UI
-
-`ui/app.py` is the first UI, kept as an alternative. It talks to the same API:
-`pip install -r requirements-ui.txt && streamlit run ui/app.py` (it uses the non-streaming endpoint).

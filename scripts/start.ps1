@@ -1,9 +1,6 @@
 # Starts the app (API + web UI on one server) and opens it in your browser.
 # Usage:  powershell -ExecutionPolicy Bypass -File D:\projects\rag-docqa\scripts\start.ps1
 # Asks for the Gemini key (hidden). The key lives only in the server window and is never saved to disk.
-# Add -Streamlit to also start the older Streamlit UI on http://localhost:8501.
-
-param([switch]$Streamlit)
 
 $root = Split-Path -Parent $PSScriptRoot
 $py = Join-Path $root ".venv\Scripts\python.exe"
@@ -32,9 +29,6 @@ if ($key) {
 
 # child windows inherit the environment variables set above
 Start-Process $py -ArgumentList "`"$root\scripts\run_api.py`"" -WorkingDirectory $root
-if ($Streamlit) {
-    Start-Process $py -ArgumentList "-m streamlit run `"$root\ui\app.py`" --server.port 8501 --browser.gatherUsageStats false" -WorkingDirectory $root
-}
 
 Write-Host "`nStarted. The first start takes ~15 seconds (it loads the search model)." -ForegroundColor Green
 Start-Sleep -Seconds 12
