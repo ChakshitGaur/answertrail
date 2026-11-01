@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import threading
 from collections import Counter, OrderedDict, defaultdict
@@ -10,8 +11,10 @@ from django.db import connection
 from django.db.models import Count, FloatField, Max, Sum
 from django.db.models.expressions import RawSQL
 
-from docqa.models import Chunk
+from docqa.models import Chunk, Document
 from docqa.services.embeddings import embed_query, tokenize
+
+log = logging.getLogger(__name__)
 
 _RRF_K = 60  # reciprocal-rank-fusion constant; 60 is the value from the original paper
 _CACHE_MAX_ENTRIES = 4  # users (or user+document scopes) kept in memory
@@ -21,7 +24,7 @@ _CACHE_MAX_CHUNKS = 50_000  # larger collections are searched without caching ra
 @dataclass
 class Hit:
     chunk: Chunk
-    score: float  # cosine similarity to the question, whichever way the hit was found
+    score: float | None  # cosine similarity to the question; None for overview samples (not found by similarity)
 
 
 @dataclass
@@ -127,6 +130,44 @@ def _corpus(chunks, key: tuple, with_matrix: bool) -> _Corpus:
             while len(_CACHE) > _CACHE_MAX_ENTRIES:
                 _CACHE.popitem(last=False)
     return corpus
+
+
+# ---- overview -------------------------------------------------------------------------------
+
+
+def overview_hits(user, document_id: int | None = None, max_passages: int = 8, max_documents: int = 5) -> list[Hit]:
+    """An evenly spaced sample of passages, for "summarize this" style questions.
+
+    A generic request like "summarize this document" is not similar to any one passage, so similarity
+    search finds nothing useful. Instead take passages spread from the start to the end of each document
+    (the newest documents first), so the answer reflects the whole thing and not only its opening.
+    """
+    docs = Document.objects.filter(owner=user)
+    if document_id is not None:
+        docs = docs.filter(pk=document_id)
+    docs = list(docs.order_by("-created_at", "-id")[:max_documents])
+    if not docs:
+        return []
+    per_doc = max(1, max_passages // len(docs))
+    hits: list[Hit] = []
+    for doc in docs:
+        count = doc.chunks.count()
+        if not count:
+            continue
+        k = min(per_doc, count)
+        wanted = sorted({round(i * (count - 1) / (k - 1)) for i in range(k)}) if k > 1 else [0]
+        chunks = Chunk.objects.filter(document=doc, index__in=wanted).select_related("document").defer("embedding")
+        hits.extend(Hit(chunk=c, score=None) for c in chunks.order_by("index"))
+    return hits
+
+
+def prime(user) -> None:
+    """Build the user's search cache now (right after an upload) so the next question does not pay for it."""
+    chunks = Chunk.objects.filter(document__owner=user).select_related("document")
+    try:
+        _corpus(chunks, (user.pk, None), with_matrix=connection.vendor != "postgresql")
+    except Exception:  # an optimisation must never fail an upload
+        log.exception("could not prime the search cache")
 
 
 # ---- search ---------------------------------------------------------------------------------

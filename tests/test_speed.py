@@ -214,6 +214,20 @@ def test_the_corpus_is_built_once_and_reused(user, counted):
     assert counted.built == 1
 
 
+def test_uploading_primes_the_cache_so_the_first_question_is_already_fast(llm_settings, counted):
+    client = make_client()
+    upload_text(client, "Refunds", REFUNDS)
+    assert counted.built == 1  # built during the upload...
+    client.post("/api/ask/", {"question": "What is the refund window?", "mode": "documents"}, format="json")
+    assert counted.built == 1  # ...and reused by the first question
+
+
+def test_a_failure_while_priming_never_fails_the_upload(monkeypatch):
+    monkeypatch.setattr(retrieval, "_corpus", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    client = make_client()
+    assert upload_text(client, "Refunds", REFUNDS).status_code == 201
+
+
 def test_adding_or_deleting_a_document_refreshes_the_cache(user, counted):
     first = ingest_document(user, "Refunds", REFUNDS)
     assert retrieval.search(user, "swordfish") == [] or True

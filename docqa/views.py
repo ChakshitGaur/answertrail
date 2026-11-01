@@ -17,7 +17,7 @@ from docqa.serializers import (
     DocumentUploadSerializer,
     RegisterSerializer,
 )
-from docqa.services import llm, routing
+from docqa.services import llm, retrieval, routing
 from docqa.services.ingest import IngestError, extract_text, ingest_document
 
 
@@ -64,6 +64,7 @@ class DocumentViewSet(
             doc = ingest_document(request.user, title, text)
         except IngestError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        retrieval.prime(request.user)  # so the first question after an upload is as fast as the rest
         return Response(DocumentSerializer(doc).data, status=status.HTTP_201_CREATED)
 
 
@@ -88,6 +89,7 @@ def _meta(plan) -> dict:
         "searched_for": plan.searched_for,
         "best_similarity": None if plan.best_similarity is None else round(plan.best_similarity, 4),
         "timings": plan.timings,
+        "overview": plan.overview,
     }
 
 
