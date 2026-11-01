@@ -50,7 +50,7 @@ input, select, textarea { background: var(--bg); border: 1px solid var(--border)
 .icon-btn { padding: .35rem .6rem; }
 .menu { display: none; }
 .sidebar { grid-area: side; overflow-y: auto; padding: 16px; background: var(--panel); border-right: 1px solid var(--border); }
-.chat { grid-area: main; display: flex; flex-direction: column; min-height: 0; }
+.chat { grid-area: main; display: flex; flex-direction: column; min-height: 0; position: relative; }
 
 /* sidebar */
 .dropzone { display: grid; gap: 2px; text-align: center; padding: 18px 12px; border: 2px dashed var(--border); border-radius: var(--radius); cursor: pointer; }
@@ -76,9 +76,23 @@ input, select, textarea { background: var(--bg); border: 1px solid var(--border)
 .msg.user { justify-content: flex-end; }
 .bubble { max-width: 100%; padding: 12px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bubble); overflow-wrap: anywhere; }
 .msg.user .bubble { background: var(--user); border-color: transparent; white-space: pre-wrap; max-width: 85%; }
+.answer > :last-child { margin-bottom: 0; }
 .answer p { margin: 0 0 .7em; }
-.answer p:last-child { margin-bottom: 0; }
+.answer ul, .answer ol { margin: 0 0 .7em; padding-left: 1.4em; }
+.answer li { margin: .15em 0; }
+.answer h4 { margin: .9em 0 .35em; font-size: 1rem; }
 .answer code { background: var(--code); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+.answer pre { background: var(--code); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 0 0 .7em; }
+.answer pre code { background: none; padding: 0; font-size: .85em; }
+.status { color: var(--muted); font-size: .85rem; margin-bottom: 4px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: .8rem; color: var(--muted); }
+.tools button { padding: .2rem .55rem; font-size: .8rem; }
+.tools .summary { margin-right: auto; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+.chips button { border-radius: 999px; padding: .4rem .9rem; font-size: .9rem; }
+.jump { position: absolute; right: 24px; bottom: 120px; border-radius: 999px; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); z-index: 5; }
+.hint { text-align: center; font-size: .75rem; margin: 0 0 8px; }
+.source mark { background: var(--hl); color: inherit; border-radius: 3px; padding: 0 1px; }
 .cite { padding: 0 .4em; margin: 0 1px; font-size: .75rem; line-height: 1.5; border-radius: 6px; background: var(--user); color: var(--accent); border-color: transparent; vertical-align: super; }
 .notice { background: var(--warn-bg); color: var(--warn); font-size: .82rem; padding: .35rem .6rem; border-radius: 8px; margin-bottom: 8px; }
 .badge { display: inline-block; font-size: .75rem; font-weight: 600; padding: .15rem .55rem; border-radius: 999px; margin-bottom: 8px; }
@@ -115,4 +129,6 @@ input, select, textarea { background: var(--bg); border: 1px solid var(--border)
   .topbar { gap: 6px; padding: 8px 10px; }
   .topbar h1 { font-size: 1rem; white-space: nowrap; }
   .topbar button { padding: .35rem .55rem; font-size: .85rem; white-space: nowrap; }
+  .hint { display: none; }
+  .jump { right: 12px; bottom: 84px; }
 }

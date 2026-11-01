@@ -10,6 +10,7 @@ Behaviour is chosen by model name, so no state is needed:
   always400* -> 400 "Please pass a valid API key" (Google reports a bad key as 400)
   noeffort* -> 400 when the request carries reasoning_effort, otherwise normal
   nullcontent* / nochoices* -> 200 with content null / an empty choices list (non-streaming)
+  markdown* -> a heading, bullet and numbered lists, bold, inline code and a fenced code block
   special*  -> newlines, quotes, backslashes, emoji, HTML, U+2028 and CJK in the answer
   split*    -> normal answer sent in 3-byte pieces (cuts frames and multi-byte characters)
   decline*  -> when allowed to, answers a grounded question with NOT_IN_DOCUMENTS (split over three
@@ -80,6 +81,8 @@ class Handler(BaseHTTPRequestHandler):
             tokens = []
         elif model.startswith("special"):  # awkward characters that must survive JSON, SSE and the DOM
             tokens = ["line1\nline2\n\nline3", ' "quoted" \\ back\\slash ', "\U0001f600 <b>x</b> </script>   é中文"]
+        elif model.startswith("markdown"):  # lists, a heading, bold, code and a fenced block, one piece at a time
+            tokens = ["## Summary\n\n", "* **First** point [1]\n", "* Second `inline` point\n\n", "```py\nx = items[1]\n```\n", "1. one\n2. two <b>raw</b>"]
         elif model.startswith("decline") and "NOT_IN_DOCUMENTS" in system:  # may decline grounded answers
             tokens = ["`NOT_IN_DOCUMENTS`."] if model == "decline2" else ["NOT_", "IN_DOC", "UMENTS"]
         elif "standalone search query" in system:  # the follow-up rewrite request

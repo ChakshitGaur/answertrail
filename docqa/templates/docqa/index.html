@@ -70,13 +70,16 @@
         <div id="empty" class="empty">
           <h2>Ask your documents</h2>
           <p class="muted" id="empty-text">Upload a document on the left, then ask a question.</p>
+          <div id="suggestions" class="chips" hidden></div>
         </div>
       </div>
+      <button id="jump" class="jump" type="button" hidden aria-label="Scroll to the latest message">&#8595; Latest</button>
       <form id="composer" class="composer">
         <textarea id="input" rows="1" maxlength="2000" placeholder="Ask a question about your documents" aria-label="Your question"></textarea>
         <button id="send" class="primary" type="submit">Send</button>
         <button id="stop" type="button" hidden>Stop</button>
       </form>
+      <p class="hint muted">Enter to send &middot; Shift+Enter for a new line &middot; Esc to stop &middot; / to focus</p>
     </main>
   </div>
 
