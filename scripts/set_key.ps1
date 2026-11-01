@@ -1,5 +1,5 @@
 # Saves your Gemini key into .env (hidden prompt, nothing printed). Run it once.
-# Usage:  powershell -ExecutionPolicy Bypass -File D:\projects\rag-docqa\scripts\set_key.ps1
+# Usage:  powershell -ExecutionPolicy Bypass -File D:\projects\answertrail\scripts\set_key.ps1
 
 $root = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $root ".env"
