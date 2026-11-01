@@ -342,7 +342,11 @@ def test_a_client_that_disconnects_mid_stream_leaves_the_server_healthy(client, 
     resp = ask_stream(client, "What is the refund window?", mode="documents")
     stream = iter(resp.streaming_content)
     next(stream)  # read the first event, then walk away
-    resp.close()
+    # (not resp.close(): that fires Django's request_finished and closes the test database connection)
+    del stream, resp
+    import gc
+
+    gc.collect()  # the abandoned generator is closed with GeneratorExit, as when a client disconnects
     assert ask_stream(client, "What is the refund window?", mode="documents").status_code == 200
 
 

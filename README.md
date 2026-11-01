@@ -257,8 +257,11 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 - A general-knowledge answer can be wrong or out of date. It is labelled, but not fact-checked.
 - Follow-up rewriting costs one extra model call, and a model that rewrites badly can steer the search.
   The "Searched for" line shows what was searched.
-- Retrieval filters by owner after the HNSW scan, so a user with few chunks among many may get fewer than
-  `top_k` results; pgvector 0.8 iterative scans address this.
+- On PostgreSQL the HNSW index returns its nearest rows before the owner filter is applied, so a user whose
+  chunks are not the globally nearest could get too few results, even none (CI caught this after thousands of
+  rolled-back test inserts). Each search now enables pgvector 0.8 iterative scans (`hnsw.iterative_scan`) so
+  the index keeps scanning until enough of the user's rows are found, and a Postgres-only test covers it. An
+  older pgvector ignores the setting and keeps the old behaviour.
 - Ingestion is synchronous (about 26 chunks per second on a laptop, so a 5 MB file can take minutes inside one
   request), and scanned (image-only) PDFs are rejected because there is no OCR.
 - Summaries read a spread sample (up to 8-10 passages), so details between the samples are not seen. For a

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 from django.db.models import Count, FloatField, Max, Sum
 from django.db.models.expressions import RawSQL
 
@@ -222,13 +222,33 @@ def _vector_hits(chunks, key: tuple, query: list[float], top_k: int) -> list[Hit
     return _search_numpy(_corpus(chunks, key, with_matrix=True), query, top_k)
 
 
+def _enable_iterative_scan() -> None:
+    """Make the HNSW index keep scanning until enough rows survive the owner filter (pgvector 0.8+).
+
+    The index returns its nearest candidates first and the owner/scope filter is applied afterwards, so
+    without this a user whose chunks are not among the globally nearest ones (other users' chunks, or
+    entries of deleted documents not yet vacuumed) can get fewer results than asked for, even none.
+    The setting lasts until the end of the surrounding transaction; an older pgvector that does not know
+    it is ignored (the savepoint stops the error from poisoning the transaction).
+    """
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
+    except DatabaseError:
+        log.info("pgvector without iterative index scans: filtered searches may return fewer results")
+
+
 def _search_pgvector(chunks, query: list[float], top_k: int) -> list[Hit]:
     # `<=>` is cosine distance; served by the HNSW index when the planner picks it.
-    ranked = chunks.annotate(
+    ranked_query = chunks.annotate(
         distance=RawSQL(
             "docqa_chunk.embedding <=> %s::vector", [json.dumps(query)], output_field=FloatField()
         )
     ).order_by("distance")[:top_k]
+    with transaction.atomic():  # SET LOCAL needs a transaction to live in
+        _enable_iterative_scan()
+        ranked = list(ranked_query)
+    ranked.sort(key=lambda c: c.distance)  # relaxed_order may return neighbours slightly out of order
     return [Hit(chunk=c, score=1.0 - c.distance) for c in ranked]
 
 
