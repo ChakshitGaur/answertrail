@@ -1,5 +1,5 @@
 # Starts the app (API + web UI on one server) and opens it in your browser.
-# Usage:  powershell -ExecutionPolicy Bypass -File D:\projects\rag-docqa\scripts\start.ps1
+# Usage:  powershell -ExecutionPolicy Bypass -File D:\projects\answertrail\scripts\start.ps1
 # Asks for the Gemini key (hidden). The key lives only in the server window and is never saved to disk.
 
 $root = Split-Path -Parent $PSScriptRoot

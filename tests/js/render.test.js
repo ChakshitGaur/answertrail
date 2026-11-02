@@ -53,6 +53,16 @@ test("headings become small headings; inline code keeps citations literal", () =
   assert.equal(L.renderAnswer("see `a[1]` and [1]", 1), 'see <code>a[1]</code> and <button type="button" class="cite" data-n="1" title="Show source 1">1</button>'.replace(/^/, "<p>").concat("</p>"));
 });
 
+test("lines starting with > become one quote block; the text inside is still escaped and keeps citations", () => {
+  assert.equal(L.renderAnswer("Intro\n> first\n> second **bold**\nAfter", 0), "<p>Intro</p><blockquote>first<br>second <strong>bold</strong></blockquote><p>After</p>");
+  assert.equal(
+    L.renderAnswer(">no space [1]\n> <b>x</b>", 1),
+    '<blockquote>no space <button type="button" class="cite" data-n="1" title="Show source 1">1</button><br>&lt;b&gt;x&lt;/b&gt;</blockquote>'
+  );
+  assert.equal(L.renderAnswer("a > b", 0), "<p>a &gt; b</p>"); // a ">" in the middle of a line is just text
+  assert.equal(L.renderAnswer("```\n> not a quote\n```", 0), "<pre><code>&gt; not a quote</code></pre>");
+});
+
 test("CRLF line endings and empty input are handled", () => {
   assert.equal(L.renderAnswer("a\r\n\r\nb", 0), "<p>a</p><p>b</p>");
   assert.equal(L.renderAnswer("", 0), "");
@@ -63,13 +73,13 @@ test("renderAnswer output is always well formed and never contains an unescaped 
   const r = rng(2026);
   const pieces = ["<", ">", "&", '"', "'", "`", "```", "``", "**", "*", "* ", "- ", "1. ", "2) ", "# ", "## ", "[1]", "[2, 3]", "[", "]", "\n", "\n\n",
     "<script>alert(1)</script>", "<img src=x onerror=alert(1)>", "</p>", "<p>", "javascript:alert(1)", " ", "  ", "a", "word", "é", "\u{1F600}", " ", "&lt;", "&amp;", "\\"];
-  const allowed = /<\/?(?:p|br|code|pre|strong|ul|ol|li|h4)>|<button type="button" class="cite" data-n="\d+" title="Show source \d+">\d+<\/button>/g;
+  const allowed = /<\/?(?:p|br|code|pre|strong|ul|ol|li|h4|blockquote)>|<button type="button" class="cite" data-n="\d+" title="Show source \d+">\d+<\/button>/g;
   for (let n = 0; n < 4000; n++) {
     const text = Array.from({ length: 1 + Math.floor(r() * 40) }, () => pick(r, pieces)).join("");
     const html = L.renderAnswer(text, Math.floor(r() * 4));
     const leftover = html.replace(allowed, "");
     assert.ok(!/[<>]/.test(leftover), `unexpected markup for ${JSON.stringify(text)} -> ${html}`);
-    for (const tag of ["p", "pre", "code", "strong", "ul", "ol", "li", "h4"]) {
+    for (const tag of ["p", "pre", "code", "strong", "ul", "ol", "li", "h4", "blockquote"]) {
       const opens = (html.match(new RegExp(`<${tag}>`, "g")) || []).length;
       const closes = (html.match(new RegExp(`</${tag}>`, "g")) || []).length;
       assert.equal(opens, closes, `unbalanced <${tag}> for ${JSON.stringify(text)} -> ${html}`);
