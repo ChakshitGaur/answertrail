@@ -26,6 +26,7 @@
   const LIST_ITEM = /^\s*(?:([-*•])|(\d{1,3})[.)])\s+(.+)$/;
   const HEADING = /^\s{0,3}#{1,4}\s+(.+)$/;
   const FENCE = /^\s*```/;
+  const QUOTE = /^\s{0,3}&gt;\s?(.*)$/; // matched after escaping, so a ">" is already "&gt;"
 
   /** Inline formatting on text that is ALREADY escaped: `code`, **bold** and [n] citation buttons. */
   function inline(escaped, sourceCount) {
@@ -47,7 +48,7 @@
 
   /**
    * Turns model/document text into safe HTML: paragraphs, bullet and numbered lists, headings, fenced
-   * code blocks, `code`, **bold** and citation buttons. Everything is escaped first, so nothing in an
+   * code blocks, > quotes, `code`, **bold** and citation buttons. Everything is escaped first, so nothing in an
    * uploaded document or a model reply can inject markup; only then are our own tags added. Citations
    * like [1] or [1, 2] become buttons only for sources that exist, and never inside code.
    */
@@ -68,6 +69,18 @@
         i++;
         while (i < lines.length && !FENCE.test(lines[i])) code.push(lines[i++]);
         out.push(`<pre><code>${code.join("\n")}</code></pre>`); // an unclosed fence (still streaming) runs to the end
+        continue;
+      }
+      if (QUOTE.test(line)) {
+        flush();
+        const quoted = [];
+        let q;
+        while (i < lines.length && (q = QUOTE.exec(lines[i]))) {
+          quoted.push(inline(q[1], sourceCount));
+          i++;
+        }
+        i--;
+        out.push(`<blockquote>${quoted.join("<br>")}</blockquote>`);
         continue;
       }
       const item = LIST_ITEM.exec(line);

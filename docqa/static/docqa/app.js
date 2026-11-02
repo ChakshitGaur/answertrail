@@ -213,7 +213,7 @@
     const ok = canAsk();
     $("input").disabled = !ok || state.asking;
     $("send").disabled = !ok || state.asking;
-    $("input").placeholder = !ok ? "Upload a document to start" : mode === "general" ? "Ask anything" : "Ask about your documents";
+    $("input").placeholder = !ok ? "Upload a document to start" : mode === "documents" ? "Ask about your documents" : "Ask anything";
     $("mode-help").textContent = L.MODE_HELP[mode];
     $("scope").disabled = mode === "general";
     $("topk").disabled = mode === "general";
