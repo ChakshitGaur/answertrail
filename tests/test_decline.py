@@ -4,7 +4,7 @@ import pytest
 
 from docqa.services import llm
 from tests.test_api import make_client, upload_text
-from tests.test_llm import PASSAGES, FakeResponse, script
+from tests.test_llm import PASSAGES
 from tests.test_modes import REFUNDS, asked, meta
 from tests.test_stream import ask_stream, parse_sse, text_of
 
@@ -24,7 +24,7 @@ def client():
 def stream_of(monkeypatch, settings, *pieces):
     """Make the streaming model emit exactly these pieces."""
     settings.LLM_BASE_URL = "http://x/v1"
-    monkeypatch.setattr(llm, "_stream", lambda messages, effort="": iter(pieces))
+    monkeypatch.setattr(llm, "_stream", lambda *args, **kwargs: iter(pieces))
 
 
 def test_decline_instruction_is_added_only_when_allowed_and_grounded():
@@ -78,14 +78,12 @@ def test_stream_does_not_hold_anything_back_when_declining_is_not_allowed(settin
     assert list(llm.stream_answer("q", None, allow_decline=True)) == ["NOT_IN_DOCUMENTS"]  # general: no decline
 
 
-def test_non_streaming_answer_raises_when_declined(settings, monkeypatch):
-    settings.LLM_BASE_URL, settings.LLM_MODEL = "http://x/v1", "primary"
-    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
-    declined_reply = {"choices": [{"message": {"content": "NOT_IN_DOCUMENTS"}}]}
-    script(monkeypatch, FakeResponse(declined_reply))
+def test_non_streaming_answer_raises_when_declined(settings, script):
+    settings.LLM_MODEL = "primary"
+    declined_reply = {"choices": [{"message": {"role": "assistant", "content": "NOT_IN_DOCUMENTS"}}]}
+    script(declined_reply, declined_reply)
     with pytest.raises(llm.NotInDocuments):
         llm.answer("q", PASSAGES, allow_decline=True)
-    script(monkeypatch, FakeResponse(declined_reply))
     assert llm.answer("q", PASSAGES) == "NOT_IN_DOCUMENTS"  # not allowed to decline: returned as text
 
 

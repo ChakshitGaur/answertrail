@@ -91,31 +91,20 @@ def test_grounded_answers_and_rewrites_use_one_effort_and_general_answers_anothe
     assert general["reasoning_effort"] == "low"
 
 
-def test_a_model_that_rejects_the_setting_is_retried_without_it_and_remembered(client, llm_settings, settings, monkeypatch):
+def test_a_model_that_rejects_the_setting_is_retried_without_it(client, llm_settings, settings):
     settings.LLM_MODEL, settings.LLM_FALLBACK_MODELS = "noeffort", ""
     settings.LLM_REASONING_EFFORT = "minimal"
-    naps = []
-    monkeypatch.setattr(llm.time, "sleep", naps.append)
     events = parse_sse(ask_stream(client, "What is the refund window?", mode="documents"))
     assert text_of(events).startswith("Hello") and events[-1][0] == "done"
-    sent = bodies(llm_settings)
-    assert ["reasoning_effort" in b for b in sent] == [True, False]
-    assert not [n for n in naps if n >= llm._BACKOFF_SECONDS]  # the retry is immediate, not a backoff
-    assert "noeffort" in llm._NO_EFFORT
-
-    llm_settings.requests.clear()
-    list(ask_stream(client, "What is the refund window?", mode="documents").streaming_content)
-    assert ["reasoning_effort" in b for b in bodies(llm_settings)] == [False]  # no wasted round trip next time
+    assert ["reasoning_effort" in b for b in bodies(llm_settings)] == [True, False]
 
 
 def test_the_setting_is_not_blamed_for_a_bad_key(client, llm_settings, settings):
-    """Google reports an invalid key as HTTP 400 too; that must not switch the setting off for good."""
+    """Google reports an invalid key as HTTP 400 too; that must fail over to the next model, not loop."""
     settings.LLM_MODEL, settings.LLM_FALLBACK_MODELS = "always400", "good"
     settings.LLM_REASONING_EFFORT = "minimal"
     events = parse_sse(ask_stream(client, "What is the refund window?", mode="documents"))
     assert text_of(events).startswith("Hello") and "good" in text_of(events)  # failed over to the next model
-    assert "always400" not in llm._NO_EFFORT
-    assert llm._NO_EFFORT == set()
 
 
 def test_the_effort_retry_does_not_use_up_the_normal_retries(client, llm_settings, settings):

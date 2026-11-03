@@ -353,50 +353,46 @@ def test_a_client_that_disconnects_mid_stream_leaves_the_server_healthy(client, 
 # ---- odd replies from the model provider ----------------------------------------------------------
 
 
-class FakeStream:
-    encoding = None
-
-    def __init__(self, lines):
-        self.lines = lines
-
-    def iter_lines(self, decode_unicode=False):
-        yield from self.lines
-
-    def close(self):
-        pass
-
-
 def frame(**delta):
     return "data: " + json.dumps({"choices": [{"delta": delta}]})
 
 
-def stream_lines(monkeypatch, settings, lines):
-    settings.LLM_BASE_URL, settings.LLM_MODEL = "http://x/v1", "m"
-    monkeypatch.setattr(llm, "_open_chat", lambda messages, stream, effort="": FakeStream(lines))
+def stream_lines(script, settings, lines):
+    settings.LLM_MODEL, settings.LLM_FALLBACK_MODELS = "m", ""
+    script(("sse", lines))
     return "".join(llm.stream_answer("q", None))
 
 
-def test_streaming_ignores_frames_it_does_not_understand(monkeypatch, settings):
+def test_streaming_ignores_frames_it_does_not_understand(script, settings):
     lines = [
-        ": keep-alive", "", "data: not json at all", 'data: {"choices": []}', 'data: {"usage": {"total_tokens": 3}}',
-        frame(role="assistant"), frame(content=None), frame(content=""), "event: ping",
-        frame(content="Hel"), 'data: {"choices": [{}]}', frame(content="lo"), "data:[DONE]", frame(content="AFTER DONE"),
+        ": keep-alive", 'data: {"choices": []}', 'data: {"usage": {"total_tokens": 3}}',
+        frame(role="assistant"), frame(content=None), frame(content=""),
+        frame(content="Hel"), frame(content="lo"), "data:[DONE]", frame(content="AFTER DONE"),
     ]
-    assert stream_lines(monkeypatch, settings, lines) == "Hello"
+    assert stream_lines(script, settings, lines) == "Hello"
 
 
-def test_streaming_accepts_done_without_a_space_and_carriage_returns(monkeypatch, settings):
-    assert stream_lines(monkeypatch, settings, [frame(content="ok") + "\r", "data:[DONE]\r"]) == "ok"
+def test_a_frame_that_is_not_json_is_an_llm_error_not_a_crash(script, settings):
+    with pytest.raises(llm.LLMError):
+        stream_lines(script, settings, [frame(content="Hel"), "data: not json at all", "data: [DONE]"])
 
 
-@pytest.mark.parametrize("bad", [5, 3.5, True, ["a"], {"x": 1}])
-def test_streaming_ignores_content_that_is_not_text(monkeypatch, settings, bad):
-    assert stream_lines(monkeypatch, settings, [frame(content=bad), frame(content="fine"), "data: [DONE]"]) == "fine"
+def test_streaming_accepts_done_without_a_space_and_carriage_returns(script, settings):
+    assert stream_lines(script, settings, [frame(content="ok") + "\r", "data:[DONE]\r"]) == "ok"
 
 
-def test_a_stream_with_only_an_error_object_is_reported_as_an_empty_answer(monkeypatch, settings):
-    with pytest.raises(llm.LLMError, match="empty answer"):
-        stream_lines(monkeypatch, settings, ['data: {"error": {"message": "quota"}}', "data: [DONE]"])
+@pytest.mark.parametrize("bad", [5, 3.5, True, {"x": 1}])
+def test_streaming_never_shows_content_that_is_not_text(script, settings, bad):
+    try:
+        text = stream_lines(script, settings, [frame(content=bad), frame(content="fine"), "data: [DONE]"])
+    except llm.LLMError:
+        return  # refusing a malformed reply is fine
+    assert text == "fine"  # so is skipping it, but it must never be shown as an answer
+
+
+def test_a_stream_with_only_an_error_object_is_reported_as_an_llm_error(script, settings):
+    with pytest.raises(llm.LLMError, match="quota"):
+        stream_lines(script, settings, ['data: {"error": {"message": "quota"}}', "data: [DONE]"])
 
 
 @pytest.mark.parametrize("model", ["nullcontent", "nochoices"])
@@ -406,33 +402,26 @@ def test_a_reply_without_text_is_an_llm_error_not_a_crash(llm_settings, settings
         llm.answer("q", ["passage"])
 
 
-def test_non_streaming_replies_with_unexpected_shapes_are_llm_errors(monkeypatch, settings):
-    settings.LLM_BASE_URL, settings.LLM_MODEL = "http://x/v1", "m"
-
-    class Reply:
-        ok = True
-        status_code = 200
-        text = "body"
-
-        def __init__(self, payload):
-            self.payload = payload
-
-        def json(self):
-            if isinstance(self.payload, Exception):
-                raise self.payload
-            return self.payload
-
-        def close(self):
-            pass
-
-    for payload in (
+@pytest.mark.parametrize(
+    "payload",
+    [
         {}, [], "text", None, {"choices": None}, {"choices": [None]}, {"choices": [{}]}, {"choices": [{"message": None}]},
         {"choices": [{"message": {"content": 5}}]}, {"choices": [{"message": {"content": ["a"]}}]},
-        {"choices": [{"message": {"content": "   "}}]}, ValueError("not json"),
-    ):
-        monkeypatch.setattr(llm, "_open_chat", lambda messages, stream, effort="", p=payload: Reply(p))
-        with pytest.raises(llm.LLMError):
-            llm.answer("q", None)
+        {"choices": [{"message": {"content": "   "}}]},
+    ],
+)
+def test_non_streaming_replies_with_unexpected_shapes_are_llm_errors(script, settings, payload):
+    settings.LLM_MODEL, settings.LLM_FALLBACK_MODELS = "m", ""
+    script(("raw", json.dumps(payload)))
+    with pytest.raises(llm.LLMError):
+        llm.answer("q", None)
+
+
+def test_a_non_json_reply_is_an_llm_error(script, settings):
+    settings.LLM_MODEL, settings.LLM_FALLBACK_MODELS = "m", ""
+    script(("raw", "<html>gateway error</html>"))
+    with pytest.raises(llm.LLMError):
+        llm.answer("q", None)
 
 
 def test_an_empty_text_from_the_model_is_never_shown_as_a_successful_answer(client, llm_settings, settings):

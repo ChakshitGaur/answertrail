@@ -66,14 +66,13 @@ def test_ask_returns_relevant_source_with_fallback_answer(settings):
     assert "30 days" in resp.data["answer"]
 
 
-def test_ask_returns_502_when_llm_backend_is_down(settings, monkeypatch):
-    from docqa.services import llm
+def test_ask_returns_502_when_llm_backend_is_down(settings):
+    import socket
 
-    settings.LLM_BASE_URL, settings.LLM_MODEL = "http://localhost:1/v1", "m"
-    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
-    monkeypatch.setattr(
-        llm.requests, "post", lambda *a, **k: (_ for _ in ()).throw(llm.requests.ConnectionError("down"))
-    )
+    with socket.socket() as s:  # a port with nothing listening on it
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    settings.LLM_BASE_URL, settings.LLM_MODEL = f"http://127.0.0.1:{port}/v1", "m"
     client = make_client()
     upload_text(client, "Refunds", "Refunds are accepted within 30 days of purchase.")
     resp = client.post("/api/ask/", {"question": "refund window?"}, format="json")
