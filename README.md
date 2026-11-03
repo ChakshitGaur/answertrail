@@ -161,6 +161,7 @@ long an answer took. Notes:
 | `EMBEDDING_DIM` | `384` | must match the model; changing it means recreating the chunk table |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | `500` / `100` | characters per chunk / overlap between chunks |
 | `HYBRID_SEARCH` | `1` | vectors + BM25 keyword search, fused; `0` for vectors only |
+| `NEIGHBOUR_PASSAGES` | `2` | up to this many extra passages per question: chunks next to a hit that match the question, so a section cut across two chunks is not answered from half of it; `0` turns it off |
 | `LLM_REASONING_EFFORT` | empty | `minimal` recommended: reasoning level for answers from documents and follow-up rewrites |
 | `LLM_REASONING_EFFORT_GENERAL` | empty | the same for general-knowledge answers (leave empty for hard questions) |
 | `PGVECTOR_USE_INDEX` | `0` | `1` lets PostgreSQL use the approximate HNSW index (only for very large collections) |
@@ -209,6 +210,12 @@ question (+ recent chat) -> [follow-up? rewrite into a standalone query]
 ```
 
 Chunks are whole sentences packed up to the size limit, with trailing sentences repeated as overlap.
+A section of a document (a resume's EDUCATION heading and the schools under it) can still be cut across two
+chunks, and only one of them may rank in the top results. After the search, the previous and next chunk of every
+hit are scored against the question and the best `NEIGHBOUR_PASSAGES` of them are added beside the hit they
+continue. A neighbour that scores below the weakest hit is dropped, so questions that did not need the extra
+text do not get it. On the demo resume, "what are the education of the candidate" used to miss the 10th-standard
+line (it sat in the next chunk, which the other document's chunks outranked); now it is included.
 Vector search is SQL (`<=>`, exact over the caller's own chunks) on Postgres and a numpy scan on SQLite. BM25 runs in Python
 over the caller's chunk text, which is fine for thousands of chunks; move it to Postgres full-text search
 for much larger collections. The grounded prompt tells the model to answer only from the numbered passages

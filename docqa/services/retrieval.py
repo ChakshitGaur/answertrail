@@ -1,14 +1,16 @@
 import json
 import logging
 import math
+import operator
 import threading
 from collections import Counter, OrderedDict, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import reduce
 
 import numpy as np
 from django.conf import settings
 from django.db import DatabaseError, connection, transaction
-from django.db.models import Count, FloatField, Max, Sum
+from django.db.models import Count, FloatField, Max, Q, Sum
 from django.db.models.expressions import RawSQL
 
 from docqa.models import Chunk, Document
@@ -31,6 +33,8 @@ class Hit:
 class SearchResult:
     hits: list[Hit]
     best_similarity: float  # cosine of the single closest chunk, however the hits were re-ordered
+    # the question's embedding, so neighbours can be scored without embedding it again (not part of the comparison)
+    query: list[float] | None = field(default=None, compare=False, repr=False)
 
 
 # ---- keyword ranking ------------------------------------------------------------------------
@@ -199,7 +203,7 @@ def search_ex(
 
     if not use_hybrid:
         hits = _vector_hits(chunks, key, query, top_k)
-        return SearchResult(hits, hits[0].score if hits else 0.0)
+        return SearchResult(hits, hits[0].score if hits else 0.0, query)
 
     pool = max(top_k * 5, 20)
     vector_hits = _vector_hits(chunks, key, query, pool)
@@ -213,7 +217,58 @@ def search_ex(
         q = np.array(query, dtype=np.float32)
         for chunk_id, embedding in Chunk.objects.filter(id__in=extra).values_list("id", "embedding"):
             by_id[chunk_id] = Hit(chunk=extra[chunk_id], score=float(np.array(embedding, dtype=np.float32) @ q))
-    return SearchResult([by_id[i] for i in fused_ids], best)
+    return SearchResult([by_id[i] for i in fused_ids], best, query)
+
+
+def add_neighbours(result: SearchResult, limit: int) -> list[Hit]:
+    """The hits, plus up to `limit` of the chunks right before or after them that best match the question.
+
+    A section of a document (a resume's EDUCATION heading and the schools under it) is often cut across two
+    chunks, and only one of them may rank high enough to be picked: the answer then silently omits the rest.
+    The candidates are the previous and next chunk of every hit, in the same document. They are ranked by their
+    own similarity to the question, and one that scores below the weakest hit is dropped (it would not have been
+    found on its own), so filler neighbours are not added to questions that did not need them.
+    Each chosen neighbour is placed beside the hit it continues, so the passages read in document order.
+    The hits themselves, and `best_similarity`, are never changed.
+    """
+    hits = result.hits
+    if limit <= 0 or not hits or result.query is None:
+        return hits
+    taken = {(h.chunk.document_id, h.chunk.index) for h in hits}
+    wanted = {
+        (h.chunk.document_id, i)
+        for h in hits
+        for i in (h.chunk.index - 1, h.chunk.index + 1)
+        if i >= 0 and (h.chunk.document_id, i) not in taken
+    }
+    if not wanted:
+        return hits
+    query = np.array(result.query, dtype=np.float32)
+    found = Chunk.objects.filter(
+        reduce(operator.or_, (Q(document_id=d, index=i) for d, i in wanted))
+    ).select_related("document")
+    bar = min((h.score for h in hits if h.score is not None), default=-1.0)  # the weakest hit already chosen
+    scored = sorted(
+        (pair for pair in ((float(np.array(c.embedding, dtype=np.float32) @ query), c) for c in found) if pair[0] >= bar),
+        key=lambda pair: (-pair[0], pair[1].document_id, pair[1].index),
+    )[:limit]
+    before: dict[tuple, Hit] = {}  # hit -> the chosen chunk just before it
+    after: dict[tuple, Hit] = {}  # hit -> the chosen chunk just after it
+    for score, chunk in scored:
+        following = (chunk.document_id, chunk.index + 1)
+        if following in taken:
+            before[following] = Hit(chunk=chunk, score=score)
+        else:
+            after[(chunk.document_id, chunk.index - 1)] = Hit(chunk=chunk, score=score)
+    ordered: list[Hit] = []
+    for hit in hits:
+        key = (hit.chunk.document_id, hit.chunk.index)
+        if key in before:
+            ordered.append(before[key])
+        ordered.append(hit)
+        if key in after:
+            ordered.append(after[key])
+    return ordered
 
 
 def _vector_hits(chunks, key: tuple, query: list[float], top_k: int) -> list[Hit]:

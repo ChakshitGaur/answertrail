@@ -113,10 +113,12 @@ def plan_answer(
     timings = {"rewrite_ms": round((rewritten - started) * 1000), "search_ms": round((done - rewritten) * 1000)}
 
     if result.hits and result.best_similarity >= relevance_threshold():
+        # a section cut across two chunks is often only half found: add the neighbours that match the question
+        hits = retrieval.add_neighbours(result, settings.NEIGHBOUR_PASSAGES)
         return Plan(
             mode="documents",
-            sources=sources_payload(result.hits),
-            passages=[h.chunk.text for h in result.hits],
+            sources=sources_payload(hits),
+            passages=[h.chunk.text for h in hits],
             searched_for=searched_for,
             best_similarity=result.best_similarity,
             can_decline=mode == "auto",
