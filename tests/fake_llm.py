@@ -70,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
         if model.startswith("noeffort") and "reasoning_effort" in body:
             return self._json(400, {"error": {"message": "Request contains an invalid argument."}})
         if model.startswith("nullcontent") and not body.get("stream"):
-            return self._json(200, {"choices": [{"message": {"content": None}, "finish_reason": "length"}]})
+            return self._json(200, {"choices": [{"message": {"role": "assistant", "content": None}, "finish_reason": "length"}]})
         if model.startswith("nochoices") and not body.get("stream"):
             return self._json(200, {"choices": []})
 
@@ -92,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
         else:  # a grounded answer
             tokens = [t.format(model=model) for t in TOKENS]
         if not body.get("stream"):
-            return self._json(200, {"choices": [{"message": {"content": "".join(tokens)}}]})
+            return self._json(200, {"choices": [{"message": {"role": "assistant", "content": "".join(tokens)}, "finish_reason": "stop"}]})
 
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")  # deliberately no charset

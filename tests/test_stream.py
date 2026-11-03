@@ -135,4 +135,4 @@ def test_non_streaming_endpoint_works_against_the_same_server(client, llm_settin
     resp = client.post("/api/ask/", {"question": "refund window?"}, format="json")
     assert resp.status_code == 200
     assert resp.data["answer"] == "Hello wörld ✓ from good [1]."
-    assert llm_settings.requests[0]["body"].get("stream") is None
+    assert not llm_settings.requests[0]["body"].get("stream")

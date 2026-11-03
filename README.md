@@ -13,7 +13,7 @@ clickable citations, so every claim can be checked against its source.
 - **Fast**: the model's reasoning is turned down (first word in about 1.3 s instead of 3-4 s), the search model loads at startup, and search takes about 10-20 ms per question however large the collection (see Speed)
 - **Streaming chat UI** served by Django itself (plain HTML/JS, no build step), with Stop, citations, drag-and-drop upload, dark/light theme and a phone layout
 - **Django REST API** with token auth and per-user isolation: users only ever search their own documents
-- **Free or paid models**: any OpenAI-compatible endpoint (Ollama, Gemini, Groq, OpenRouter) or Anthropic, with automatic retry and model fallback when a provider is overloaded
+- **Free or paid models** through LangChain: any OpenAI-compatible endpoint (Ollama, Gemini, Groq, OpenRouter) or Anthropic, with automatic retry and model fallback when a provider is overloaded, and optional LangSmith tracing
 - **PostgreSQL + pgvector** in production (exact per-user search; HNSW index available for huge collections), SQLite for local use
 - **Retrieval eval harness** that measures hit-rate@k and MRR, plus Python and JavaScript tests and CI
 
@@ -99,9 +99,26 @@ Examples for the first option:
 Free tiers change their limits and model names, so check the provider's docs.
 
 `LLM_FALLBACK_MODELS` (comma separated) are tried in order when a model is overloaded (503/429) or unknown
-(404). Each model gets 2 attempts and all attempts share a 100-second budget. A bad key (401/403) stops
+(404). Each model gets 2 attempts of up to 30 seconds each. A bad key (401/403) stops
 immediately, since another model cannot fix it. If everything fails the UI shows the provider's own error
-message, and the retrieved sources are still shown.
+message, and the retrieved sources are still shown. The model calls, retries and fallbacks are done with
+[LangChain](https://python.langchain.com/) chat models (`langchain-openai`, `langchain-anthropic`); retrieval stays our own code.
+
+## Tracing with LangSmith (optional)
+
+Because the model calls go through LangChain, they can be traced in [LangSmith](https://smith.langchain.com/).
+Each question shows up as a run named `answer_from_documents`, `answer_general` or `rewrite_followup`, with the
+exact prompt (including the retrieved passages), the reply, the time taken and token counts. It is **off by
+default**. To switch it on, add these to `.env`:
+
+```
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=...
+LANGSMITH_PROJECT=answertrail
+```
+
+Privacy: tracing sends your questions, the retrieved passages of your documents and the answers to LangSmith's
+servers, so leave it off for confidential documents. The tests always switch it off.
 
 ## Speed
 
