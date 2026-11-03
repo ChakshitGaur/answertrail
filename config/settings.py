@@ -120,6 +120,17 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {"user": "120/min"},
 }
 
+# Timing of every model call ("model X answered: first word 1.7s") and of failures; DOCQA_LOG_LEVEL=WARNING hides the former
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(asctime)s %(name)s: %(message)s", "datefmt": "%H:%M:%S"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "loggers": {
+        "docqa": {"handlers": ["console"], "level": os.environ.get("DOCQA_LOG_LEVEL", "INFO"), "propagate": False}
+    },
+}
+
 # --- RAG settings ---
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-sonnet-5-5")
