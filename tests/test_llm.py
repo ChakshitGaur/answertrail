@@ -96,18 +96,19 @@ def short_timeout(monkeypatch):
     monkeypatch.setattr(llm, "_TIMEOUT", (1, 0.2))
 
 
-def test_timeout_moves_on_to_the_next_model(settings, script, short_timeout):
+def test_timeout_moves_on_to_the_next_model_without_retrying_the_slow_one(settings, script, short_timeout):
     settings.LLM_FALLBACK_MODELS = "fast"
-    server = script("hang", "hang", OK)
+    server = script("hang", OK)
     assert llm.answer("q", PASSAGES) == "30 days [1]."
-    assert models_asked(server) == ["primary", "primary", "fast"]
+    assert models_asked(server) == ["primary", "fast"]
 
 
 def test_all_models_timing_out_is_a_clear_error(settings, script, short_timeout):
     settings.LLM_FALLBACK_MODELS = "fast"
-    script(*["hang"] * 4)
+    server = script("hang", "hang")
     with pytest.raises(llm.LLMError, match=r"primary, fast.*no reply within"):
         llm.answer("q", PASSAGES)
+    assert models_asked(server) == ["primary", "fast"]  # one try each, not two
 
 
 def test_answer_budget_leaves_room_for_thinking_models(script):
@@ -197,11 +198,11 @@ def test_no_internet_gives_a_plain_message_not_a_list_of_models(settings):
     assert "Connection error" in str(exc.value)  # the detail is still there for debugging
 
 
-def test_dropped_connections_are_retried_then_reported(script):
+def test_a_dropped_connection_is_reported(script):
     server = script("reset", "reset")
     with pytest.raises(llm.LLMError, match="could not reach"):
         llm.answer("q", PASSAGES)
-    assert len(server.requests) == 2
+    assert len(server.requests) == 1  # no same-model retry: another model gets the next try
 
 
 def test_mixed_failures_still_report_every_model(settings, script):
@@ -274,3 +275,99 @@ def test_anthropic_is_used_when_there_is_no_openai_compatible_server(settings):
     settings.LLM_BASE_URL, settings.ANTHROPIC_API_KEY, settings.ANSWER_MODEL = "", "sk-test", "claude-test"
     model = llm._runnable("")
     assert isinstance(model, ChatAnthropic) and model.model == "claude-test" and model.max_tokens == 2000
+
+
+# ---- latency behaviour ----------------------------------------------------------------------------
+
+
+def test_a_rate_limited_model_is_skipped_for_the_next_questions(settings, script):
+    settings.LLM_FALLBACK_MODELS = "backup"
+    server = script((429, "quota exceeded"), OK, OK, OK)
+    assert llm.answer("q", PASSAGES) == "30 days [1]."
+    assert llm.answer("q", PASSAGES) == "30 days [1]."
+    assert llm.answer("q", PASSAGES) == "30 days [1]."
+    assert models_asked(server) == ["primary", "backup", "backup", "backup"]  # primary tried once, then parked
+
+
+def test_a_model_comes_back_after_its_cooldown(settings, script, monkeypatch):
+    settings.LLM_FALLBACK_MODELS = "backup"
+    server = script((429, "quota exceeded"), OK, OK)
+    llm.answer("q", PASSAGES)
+    llm._COOLING["primary"] = 0.0  # the cooldown is over
+    llm.answer("q", PASSAGES)
+    assert models_asked(server) == ["primary", "backup", "primary"]
+
+
+def test_when_every_model_is_cooling_they_are_all_tried_anyway(settings, script):
+    settings.LLM_FALLBACK_MODELS = "backup"
+    server = script(OK)
+    for name in ("primary", "backup"):
+        llm._COOLING[name] = float("inf")
+    assert llm.answer("q", PASSAGES) == "30 days [1]."
+    assert models_asked(server) == ["primary"]
+
+
+def test_a_server_error_is_retried_once_straight_away(script):
+    server = script((503, "overloaded"), OK)
+    assert llm.answer("q", PASSAGES) == "30 days [1]."
+    assert len(server.requests) == 2
+
+
+def test_model_clients_are_built_once_and_keep_their_connection_open():
+    first = llm._chat_model("primary")
+    assert llm._chat_model("primary") is first
+    assert llm._chat_model("other") is not first
+    assert llm._chat_model("primary", "minimal") is not first
+    pool = first.root_client._client._transport._pool
+    assert pool._keepalive_expiry >= 60  # httpx closes idle connections after 5 s by default
+
+
+def test_the_follow_up_rewrite_is_one_quick_attempt(settings, script, monkeypatch):
+    settings.LLM_FALLBACK_MODELS = "backup"
+    seen = {}
+    real = llm._chat_model
+
+    def spy(name, effort="", timeout=None):
+        seen.setdefault("timeouts", []).append(timeout)
+        return real(name, effort, timeout)
+
+    monkeypatch.setattr(llm, "_chat_model", spy)
+    server = script((503, "busy"), OK)
+    assert llm.condense_question("and the window?", HISTORY) == "and the window?"  # failed quietly
+    assert models_asked(server) == ["primary"]  # no retry, no fallback model
+    assert seen["timeouts"] == [llm._REWRITE_TIMEOUT]
+
+
+def test_every_model_attempt_is_timed_in_the_log(script, caplog):
+    import logging
+
+    script(OK)
+    with caplog.at_level(logging.INFO, logger="docqa.services.llm"):
+        llm.answer("q", PASSAGES)
+    assert any("model primary answered: first word" in r.getMessage() for r in caplog.records)
+
+
+def test_a_failed_attempt_is_logged_as_a_warning(script, caplog):
+    script((503, "busy"), (503, "busy"))
+    with pytest.raises(llm.LLMError):
+        llm.answer("q", PASSAGES)
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 2 and "model primary failed after" in warnings[0]
+
+
+def test_warm_up_builds_the_client_and_never_raises(settings, monkeypatch):
+    settings.LLM_BASE_URL, settings.LLM_MODEL = "http://127.0.0.1:1/v1", "primary"
+    assert isinstance(llm.warm_up(), float)
+    assert llm._chat_model("primary", llm._effort_for(True)) is llm._chat_model("primary", llm._effort_for(True))
+    monkeypatch.setattr(llm, "_runnable", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert llm.warm_up() is None
+    settings.LLM_BASE_URL = ""
+    assert llm.warm_up() is None  # no model configured, nothing to warm
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["what are the education of the candidate", "What is the refund window for online orders", "list all the skills in the resume"],
+)
+def test_ordinary_questions_are_not_rewritten(question):
+    assert not llm.looks_like_followup(question)

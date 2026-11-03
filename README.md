@@ -99,7 +99,9 @@ Examples for the first option:
 Free tiers change their limits and model names, so check the provider's docs.
 
 `LLM_FALLBACK_MODELS` (comma separated) are tried in order when a model is overloaded (503/429) or unknown
-(404). Each model gets 2 attempts of up to 30 seconds each. A bad key (401/403) stops
+(404), times out (30 s) or drops the connection: the next model is tried straight away. A server error (5xx)
+is retried once first, and a model that answered 429 (rate limit or quota) is skipped for a minute so the
+next questions do not pay for the same refusal. A bad key (401/403) stops
 immediately, since another model cannot fix it. If everything fails the UI shows the provider's own error
 message, and the retrieved sources are still shown. The model calls, retries and fallbacks are done with
 [LangChain](https://python.langchain.com/) chat models (`langchain-openai`, `langchain-anthropic`); retrieval stays our own code.
@@ -139,7 +141,15 @@ long an answer took. Notes:
 - `minimal` reasoning suits answering from passages. For hard reasoning or coding questions in General mode,
   set `LLM_REASONING_EFFORT_GENERAL=` (empty) to let the model think. I checked two general questions, not a
   benchmark.
-- A model that rejects `reasoning_effort` (flash-lite rejected `none`) is retried without it and remembered.
+- A model that rejects `reasoning_effort` (flash-lite rejected `none`) is retried without it.
+- Every model attempt is logged with its time to first word, e.g. `model gemini-3.6-flash answered: first
+  word 1.7s, total 2.0s`, and failures as warnings. When answers feel slow, read the server log first: on free
+  tiers the delay is usually the provider (the same question took 1.7 s to 30 s on different models and
+  minutes), not this app. `DOCQA_LOG_LEVEL=WARNING` hides the timing lines.
+- The model client is built and its connection kept open for two minutes (a new TLS handshake cost 0.1-0.5 s
+  per question), and its libraries are imported at startup, not on the first question (about 2 s).
+- The follow-up rewrite is optional, so it gets one attempt with an 8 s limit and no fallback models; if it
+  fails the question is searched as typed. Questions of six or more words with no reference word are not rewritten.
 - Ingestion is still about 26 chunks per second on this laptop (a 200 KB document takes about 20 s) and runs
   inside the upload request; a background queue is the next step for large files.
 

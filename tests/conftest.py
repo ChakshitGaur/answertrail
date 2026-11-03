@@ -32,6 +32,8 @@ def isolated_from_local_config(settings, monkeypatch):
     from django.core.cache import cache
 
     retrieval.clear_cache()  # every test gets a fresh database whose ids start over, so never reuse a corpus
+    llm._COOLING.clear()  # a model rate-limited in one test must not be skipped in the next
+    llm._client.cache_clear()
     cache.clear()  # rate-limit counters live in the cache; one test's requests must not throttle the next
 
 

@@ -14,7 +14,7 @@ class DocqaConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
 
     def ready(self):
-        """Optionally load the neural embedding model in the background when the server starts.
+        """Optionally load the neural embedding model and the model client in the background at start.
 
         Without this, the first question after every start waits 10-20 s for the model to load.
         Off by default (tests, migrations and shell sessions should not pay for it); the launch
@@ -32,8 +32,11 @@ class DocqaConfig(AppConfig):
 
 
 def _warm_up():
-    from docqa.services import embeddings
+    from docqa.services import embeddings, llm
 
     seconds = embeddings.warm_up()
     if seconds is not None:
         log.info("embedding model ready in %.1fs", seconds)
+    seconds = llm.warm_up()
+    if seconds is not None:
+        log.info("language model client ready in %.1fs", seconds)
