@@ -146,6 +146,12 @@ long an answer took. Notes:
   word 1.7s, total 2.0s`, and failures as warnings. When answers feel slow, read the server log first: on free
   tiers the delay is usually the provider (the same question took 1.7 s to 30 s on different models and
   minutes), not this app. `DOCQA_LOG_LEVEL=WARNING` hides the timing lines.
+- To choose between models or providers with numbers, run `python manage.py llm_latency` (3 real calls per
+  configured model, median / min / max first word, slowest last; a model that fails twice is not asked again, so
+  an exhausted quota is not burned). To try another server without touching `.env`, keep its key in an
+  environment variable and pass its name: `python manage.py llm_latency --base-url https://api.groq.com/openai/v1
+  --key-env GROQ_API_KEY --models <a model name from their docs>`. The key is read from the variable and never
+  printed. Run it more than once: free tiers vary by the hour.
 - The model client is built and its connection kept open for two minutes (a new TLS handshake cost 0.1-0.5 s
   per question), and its libraries are imported at startup, not on the first question (about 2 s).
 - The follow-up rewrite is optional, so it gets one attempt with an 8 s limit and no fallback models; if it
