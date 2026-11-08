@@ -109,3 +109,19 @@ def test_delete_removes_chunks():
     assert client.delete(f"/api/documents/{doc['id']}/").status_code == 204
     resp = client.post("/api/ask/", {"question": "text delete"}, format="json")
     assert resp.data["sources"] == []
+
+
+def test_usernames_are_unique_ignoring_case(db):
+    from rest_framework.test import APIClient
+
+    c = APIClient()
+    assert c.post("/api/auth/register/", {"username": "Alice", "password": "pw12345678x"}).status_code == 201
+    assert c.post("/api/auth/register/", {"username": "alice", "password": "pw12345678x"}).status_code == 400
+
+
+def test_login_is_rate_limited_per_ip(db):
+    from rest_framework.test import APIClient
+
+    c = APIClient()
+    codes = [c.post("/api/auth/token/", {"username": "x", "password": "y"}).status_code for _ in range(25)]
+    assert codes[0] == 400 and codes[-1] == 429

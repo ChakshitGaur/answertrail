@@ -117,7 +117,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"user": "120/min"},
+    "DEFAULT_THROTTLE_RATES": {"user": "120/min", "auth": "20/min"},
 }
 
 # Timing of every model call ("model X answered: first word 1.7s") and of failures; DOCQA_LOG_LEVEL=WARNING hides the former

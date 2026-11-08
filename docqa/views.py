@@ -2,12 +2,15 @@ import json
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Count
 from django.http import StreamingHttpResponse
 from rest_framework import mixins, status, viewsets
 from rest_framework.authtoken.models import Token
+from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from docqa.models import Document
@@ -21,9 +24,20 @@ from docqa.services import llm, retrieval, routing
 from docqa.services.ingest import IngestError, extract_text, ingest_document
 
 
+class AuthRateThrottle(AnonRateThrottle):
+    """Per-IP limit on register/login, much stricter than the general limit, to slow password guessing."""
+
+    scope = "auth"
+
+
+class LoginView(ObtainAuthToken):
+    throttle_classes = [AuthRateThrottle]
+
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [AuthRateThrottle]
 
     def post(self, request):
         ser = RegisterSerializer(data=request.data)
@@ -43,7 +57,7 @@ class DocumentViewSet(
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        return Document.objects.filter(owner=self.request.user)
+        return Document.objects.filter(owner=self.request.user).annotate(chunk_total=Count("chunks"))
 
     def create(self, request):
         ser = DocumentUploadSerializer(data=request.data)
