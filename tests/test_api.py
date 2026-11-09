@@ -109,3 +109,54 @@ def test_delete_removes_chunks():
     assert client.delete(f"/api/documents/{doc['id']}/").status_code == 204
     resp = client.post("/api/ask/", {"question": "text delete"}, format="json")
     assert resp.data["sources"] == []
+
+
+def test_usernames_are_unique_ignoring_case(db):
+    from rest_framework.test import APIClient
+
+    c = APIClient()
+    assert c.post("/api/auth/register/", {"username": "Alice", "password": "pw12345678x"}).status_code == 201
+    assert c.post("/api/auth/register/", {"username": "alice", "password": "pw12345678x"}).status_code == 400
+
+
+def test_login_is_rate_limited_per_ip(db):
+    from rest_framework.test import APIClient
+
+    c = APIClient()
+    codes = [c.post("/api/auth/token/", {"username": "x", "password": "y"}).status_code for _ in range(25)]
+    assert codes[0] == 400 and codes[-1] == 429
+
+
+def _token_client(db, username="tok"):
+    from django.contrib.auth import get_user_model
+    from rest_framework.authtoken.models import Token
+    from rest_framework.test import APIClient
+
+    user = get_user_model().objects.create_user(username, password="pw12345678x")
+    token = Token.objects.create(user=user)
+    c = APIClient()
+    c.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+    return c, token
+
+
+def test_expired_token_is_rejected(db):
+    from django.utils import timezone
+
+    c, token = _token_client(db)
+    assert c.get("/api/documents/").status_code == 200
+    type(token).objects.filter(pk=token.pk).update(created=timezone.now() - timezone.timedelta(days=31))
+    assert c.get("/api/documents/").status_code == 401
+
+
+def test_logout_revokes_the_token(db):
+    c, _ = _token_client(db)
+    assert c.post("/api/auth/logout/").status_code == 204
+    assert c.get("/api/documents/").status_code == 401
+
+
+def test_document_limit_per_user(db, settings):
+    settings.MAX_DOCUMENTS_PER_USER = 1
+    c, _ = _token_client(db)
+    body = {"title": "a", "text": "Some text to store. More text here."}
+    assert c.post("/api/documents/", body, format="json").status_code == 201
+    assert c.post("/api/documents/", body, format="json").status_code == 400

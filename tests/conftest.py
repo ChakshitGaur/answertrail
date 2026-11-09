@@ -42,7 +42,7 @@ def no_throttle(monkeypatch):
     """For tests that deliberately send hundreds of requests."""
     from rest_framework.throttling import SimpleRateThrottle
 
-    monkeypatch.setattr(SimpleRateThrottle, "THROTTLE_RATES", {"user": "1000000/min"})
+    monkeypatch.setattr(SimpleRateThrottle, "THROTTLE_RATES", {"user": "1000000/min", "auth": "1000000/min"})
 
 
 @pytest.fixture

@@ -176,6 +176,10 @@ long an answer took. Notes:
 | `DATABASE_URL` | SQLite file | `postgres://user:pass@host:5432/db` enables pgvector |
 | `MAX_UPLOAD_BYTES` | 5 MB | upload limit (the UI checks the same limit) |
 | `DJANGO_DEBUG` | `1` | set `0` in production; then `DJANGO_SECRET_KEY` is required |
+| `DJANGO_ALLOWED_HOSTS` | `*` with debug, else `localhost,127.0.0.1` | comma separated host names the server answers to |
+| `TOKEN_TTL_DAYS` | `30` | API tokens expire after this many days (`0` = never); `POST /api/auth/logout/` revokes one |
+| `MAX_DOCUMENTS_PER_USER` | `100` | upload limit per account (`0` = unlimited) |
+| `MIN_SOURCE_RATIO` | `0.5` | passages scoring below this fraction of the best one are not used or cited |
 | `DJANGO_SECURE` | off | set `1` behind HTTPS: redirects, secure cookies, HSTS |
 
 ## Deploying

@@ -10,7 +10,7 @@ class RegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate_username(self, value):
-        if get_user_model().objects.filter(username=value).exists():
+        if get_user_model().objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError("Username already taken.")
         return value
 
@@ -20,7 +20,11 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class DocumentSerializer(serializers.ModelSerializer):
-    chunk_count = serializers.IntegerField(source="chunks.count", read_only=True)
+    chunk_count = serializers.SerializerMethodField()
+
+    def get_chunk_count(self, doc):
+        total = getattr(doc, "chunk_total", None)  # annotated by the list view; avoids one query per document
+        return doc.chunks.count() if total is None else total
 
     class Meta:
         model = Document
