@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -47,6 +48,15 @@ class RegisterView(APIView):
         return Response({"token": token.key}, status=status.HTTP_201_CREATED)
 
 
+class LogoutView(APIView):
+    """Revokes the token used for this request."""
+
+    def post(self, request):
+        if request.auth is not None and hasattr(request.auth, "delete"):
+            request.auth.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class DocumentViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -60,6 +70,12 @@ class DocumentViewSet(
         return Document.objects.filter(owner=self.request.user).annotate(chunk_total=Count("chunks"))
 
     def create(self, request):
+        limit = settings.MAX_DOCUMENTS_PER_USER
+        if limit and Document.objects.filter(owner=request.user).count() >= limit:
+            return Response(
+                {"detail": f"Document limit reached ({limit}). Delete some documents first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         ser = DocumentUploadSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         upload = ser.validated_data.get("file")
@@ -136,6 +152,10 @@ class AskStreamView(APIView):
                     continue
                 except llm.LLMError as exc:
                     yield _sse("error", {"detail": f"The language model request failed: {exc}"})
+                    return
+                except Exception:  # never leave the UI waiting on a stream that just stops
+                    logging.getLogger("docqa").exception("unexpected error while streaming an answer")
+                    yield _sse("error", {"detail": "Something went wrong while answering. Please try again."})
                     return
                 break
             yield _sse("done", {})

@@ -1,3 +1,4 @@
+import dataclasses
 import re
 import time
 from dataclasses import dataclass, field
@@ -54,6 +55,13 @@ def sources_payload(hits) -> list[dict]:
         }
         for i, h in enumerate(hits, start=1)
     ]
+
+
+def _drop_weak_hits(result):
+    """Remove hits far less similar than the best one; they would only add noise to the prompt and citations."""
+    floor = settings.MIN_SOURCE_RATIO * result.best_similarity
+    kept = [h for i, h in enumerate(result.hits) if i == 0 or h.score is None or h.score >= floor]
+    return dataclasses.replace(result, hits=kept)
 
 
 def relevance_threshold() -> float:
@@ -114,6 +122,7 @@ def plan_answer(
 
     if result.hits and result.best_similarity >= relevance_threshold():
         # a section cut across two chunks is often only half found: add the neighbours that match the question
+        result = _drop_weak_hits(result)
         hits = retrieval.add_neighbours(result, settings.NEIGHBOUR_PASSAGES)
         return Plan(
             mode="documents",

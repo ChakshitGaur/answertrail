@@ -9,8 +9,13 @@ load_dotenv(BASE_DIR / ".env")  # optional local settings and keys; see .env.exa
 
 _DEV_SECRET_KEY = "dev-insecure-key-change-me"
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
+DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"  # README: set 0 in production
+# With DEBUG on, any host is accepted (local use); with DEBUG off, list yours in DJANGO_ALLOWED_HOSTS.
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "*" if DEBUG else "localhost,127.0.0.1").split(",")
+    if h.strip()
+]
 
 if not DEBUG and SECRET_KEY == _DEV_SECRET_KEY:
     from django.core.exceptions import ImproperlyConfigured
@@ -112,7 +117,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.TokenAuthentication",
+        "docqa.authentication.ExpiringTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
@@ -153,6 +158,9 @@ EMBEDDING_DIM = int(os.environ.get("EMBEDDING_DIM", "384"))  # bge-small-en-v1.5
 HYBRID_SEARCH = os.environ.get("HYBRID_SEARCH", "1") == "1"  # vectors + BM25 keywords, fused
 # Up to this many extra passages per question: the chunks next to a hit that best match the question, so a
 # section cut across two chunks is not answered from half of it. 0 turns it off.
+# A hit scoring below this fraction of the best hit's similarity is dropped from the passages and citations
+# (a 0.01 "source" next to a 0.49 one is noise). The best hit is always kept. 0 turns it off.
+MIN_SOURCE_RATIO = float(os.environ.get("MIN_SOURCE_RATIO", "0.5"))
 NEIGHBOUR_PASSAGES = int(os.environ.get("NEIGHBOUR_PASSAGES", "2"))
 # PostgreSQL: exact per-user vector search by default. "1" lets the planner use the approximate HNSW index instead,
 # which only pays off for very large collections and can return too few rows behind the owner filter.
@@ -161,4 +169,6 @@ PGVECTOR_USE_INDEX = os.environ.get("PGVECTOR_USE_INDEX", "0") == "1"
 RELEVANCE_THRESHOLD = float(os.environ["RELEVANCE_THRESHOLD"]) if os.environ.get("RELEVANCE_THRESHOLD") else None
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "500"))  # characters
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
+TOKEN_TTL_DAYS = int(os.environ.get("TOKEN_TTL_DAYS", "30"))  # 0 = tokens never expire
+MAX_DOCUMENTS_PER_USER = int(os.environ.get("MAX_DOCUMENTS_PER_USER", "100"))  # 0 = unlimited
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))

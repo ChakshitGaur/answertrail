@@ -65,3 +65,14 @@ def test_similar_text_scores_higher_than_unrelated():
     related = np.array(embed("our refund policy allows returns within 30 days"))
     unrelated = np.array(embed("photosynthesis occurs in chloroplasts"))
     assert q @ related > q @ unrelated
+
+
+def test_drop_weak_hits_keeps_best_and_close_ones(settings):
+    from types import SimpleNamespace as NS
+
+    from docqa.services import retrieval, routing
+
+    settings.MIN_SOURCE_RATIO = 0.5
+    hits = [retrieval.Hit(chunk=NS(), score=s) for s in (0.49, 0.30, 0.014)]
+    out = routing._drop_weak_hits(retrieval.SearchResult(hits, 0.49))
+    assert [h.score for h in out.hits] == [0.49, 0.30]

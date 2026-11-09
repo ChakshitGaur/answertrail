@@ -136,3 +136,22 @@ def test_non_streaming_endpoint_works_against_the_same_server(client, llm_settin
     assert resp.status_code == 200
     assert resp.data["answer"] == "Hello wörld ✓ from good [1]."
     assert not llm_settings.requests[0]["body"].get("stream")
+
+
+def test_unexpected_error_mid_stream_sends_an_error_event(monkeypatch, db):
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+
+    from docqa.services import llm
+
+    def boom(*a, **k):
+        raise RuntimeError("kaboom")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(llm, "stream_answer", boom)
+    user = get_user_model().objects.create_user("s", password="pw12345678x")
+    c = APIClient()
+    c.force_authenticate(user)
+    c.post("/api/documents/", {"title": "t", "text": "Cats purr when happy. Dogs bark loudly."}, format="json")
+    resp = c.post("/api/ask/stream/", {"question": "do cats purr?", "mode": "general"}, format="json")
+    assert b"event: error" in b"".join(resp.streaming_content)
