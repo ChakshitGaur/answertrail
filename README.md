@@ -156,8 +156,10 @@ long an answer took. Notes:
   per question), and its libraries are imported at startup, not on the first question (about 2 s).
 - The follow-up rewrite is optional, so it gets one attempt with an 8 s limit and no fallback models; if it
   fails the question is searched as typed. Questions of six or more words with no reference word are not rewritten.
-- Ingestion is still about 26 chunks per second on this laptop (a 200 KB document takes about 20 s) and runs
-  inside the upload request; a background queue is the next step for large files.
+- Ingestion is about 26 chunks per second on this laptop (a 200 KB document takes about 20 s). It now runs in a
+  background thread (one document at a time), so the upload returns at once and the document list shows
+  "Indexing..." until it is ready. It is an in-process thread, not a separate queue: a server restart drops
+  unfinished work (the document then shows as failed after `INGEST_TIMEOUT_SECONDS`).
 
 ## Configuration
 
@@ -174,6 +176,9 @@ long an answer took. Notes:
 | `WARMUP_EMBEDDINGS` | `0` | `1` loads the search model at startup (the launch script and docker-compose set it) |
 | `RELEVANCE_THRESHOLD` | per embedder | best-passage similarity needed to answer from documents (see Answer modes) |
 | `DATABASE_URL` | SQLite file | `postgres://user:pass@host:5432/db` enables pgvector |
+| `INGEST_ASYNC` | `1` | uploads are indexed in a background thread: the upload returns `202` with `status: "processing"` and the document list shows `ready` or `failed`; `0` indexes inside the request (`201`) |
+| `INGEST_TIMEOUT_SECONDS` | `900` | a document still "processing" after this long is shown as failed (e.g. the server restarted mid-way) |
+| `ASK_RATE` | `30/min` | per-user limit on questions (`/api/ask/` and `/api/ask/stream/`), on top of the general 120/min |
 | `MAX_UPLOAD_BYTES` | 5 MB | upload limit (the UI checks the same limit) |
 | `DJANGO_DEBUG` | `1` | set `0` in production; then `DJANGO_SECRET_KEY` is required |
 | `DJANGO_ALLOWED_HOSTS` | `*` with debug, else `localhost,127.0.0.1` | comma separated host names the server answers to |
@@ -194,7 +199,7 @@ Put it behind HTTPS and set `DJANGO_SECURE=1`. HSTS preload and include-subdomai
 |---|---|---|
 | POST | `/api/auth/register/` | `{username, password}` -> `{token}` |
 | POST | `/api/auth/token/` | login -> `{token}` |
-| POST | `/api/documents/` | multipart `file` (.pdf/.txt/.md) or JSON `{title, text}` |
+| POST | `/api/documents/` | multipart `file` (.pdf/.txt/.md) or JSON `{title, text}` -> `202` with `status: "processing"` (poll `GET /api/documents/` until `ready` or `failed`) |
 | GET | `/api/documents/`, `/api/documents/<id>/` | own documents only |
 | DELETE | `/api/documents/<id>/` | removes its chunks too |
 | POST | `/api/ask/` | `{question, mode?, history?, document_id?, top_k?}` -> `{answer, sources[], mode, searched_for, best_similarity}` |

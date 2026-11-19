@@ -29,7 +29,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Document
-        fields = ["id", "title", "created_at", "chunk_count"]
+        fields = ["id", "title", "created_at", "chunk_count", "status", "error"]
 
 
 class DocumentUploadSerializer(serializers.Serializer):

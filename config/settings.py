@@ -123,7 +123,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"user": "120/min", "auth": "20/min"},
+    "DEFAULT_THROTTLE_RATES": {"user": "120/min", "auth": "20/min", "ask": os.environ.get("ASK_RATE", "30/min")},
 }
 
 # Timing of every model call ("model X answered: first word 1.7s") and of failures; DOCQA_LOG_LEVEL=WARNING hides the former
@@ -172,4 +172,8 @@ CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "500"))  # characters
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
 TOKEN_TTL_DAYS = int(os.environ.get("TOKEN_TTL_DAYS", "30"))  # 0 = tokens never expire
 MAX_DOCUMENTS_PER_USER = int(os.environ.get("MAX_DOCUMENTS_PER_USER", "100"))  # 0 = unlimited
+# Uploads are split and embedded in a background thread so a big file does not hold the request (and a server
+# worker) for minutes; the upload returns at once with status "processing". 0 = do it inside the request.
+INGEST_ASYNC = os.environ.get("INGEST_ASYNC", "1") == "1"
+INGEST_TIMEOUT_SECONDS = int(os.environ.get("INGEST_TIMEOUT_SECONDS", "900"))  # "processing" for longer = failed
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))

@@ -129,6 +129,7 @@
 
   function signOut(message) {
     if (state.controller) state.controller.abort();
+    clearTimeout(state.pollTimer);
     state.token = null;
     state.docs = [];
     state.chat = [];
@@ -161,6 +162,11 @@
     if (!resp.ok) return;
     state.docs = await resp.json();
     renderDocs();
+    // documents still being indexed in the background: look again shortly, until none is left
+    clearTimeout(state.pollTimer);
+    if (state.token && state.docs.some((d) => d.status === "processing")) {
+      state.pollTimer = setTimeout(refreshDocs, 2000);
+    }
   }
 
   function renderDocs() {
@@ -197,7 +203,13 @@
     return el("li", {},
       el("div", { class: "meta" },
         el("div", { class: "title", text: doc.title, title: doc.title }),
-        el("div", { class: "muted", text: L.plural(doc.chunk_count, "passage") + (when ? " · " + when : "") })),
+        el("div", {
+          class: doc.status === "failed" ? "failed" : "muted",
+          title: doc.error || "",
+          text: doc.status === "processing" ? "Indexing..."
+            : doc.status === "failed" ? "Failed: " + (doc.error || "could not be indexed")
+            : L.plural(doc.chunk_count, "passage") + (when ? " · " + when : ""),
+        })),
       del);
   }
 
@@ -281,14 +293,19 @@
     xhr.open("POST", "/api/documents/");
     xhr.setRequestHeader("Authorization", "Token " + state.token);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.style.width = Math.round((e.loaded / e.total) * 90) + "%"; };
-    xhr.upload.onload = () => { bar.style.width = "90%"; status.textContent = "Indexing... large files can take a minute"; };
+    xhr.upload.onload = () => { bar.style.width = "90%"; status.textContent = "Uploaded. Checking the file..."; };
     xhr.onerror = () => fail("Upload failed: could not reach the server.");
     xhr.ontimeout = () => fail("Upload timed out. Try a smaller file.");
     xhr.onload = async () => {
       if (xhr.status === 401) return signOut("Your session expired. Please sign in again.");
       let body = null;
       try { body = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
-      if (xhr.status === 201) {
+      if (xhr.status === 202) {  // accepted: indexing continues on the server, and the document list shows its progress
+        bar.style.width = "100%";
+        status.textContent = "Uploaded. Indexing in the background...";
+        setTimeout(() => item.remove(), 4000);
+        await refreshDocs();
+      } else if (xhr.status === 201) {
         bar.style.width = "100%";
         status.textContent = "Done: " + L.plural(body.chunk_count, "passage");
         setTimeout(() => item.remove(), 4000);
