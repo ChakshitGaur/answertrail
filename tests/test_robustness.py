@@ -18,6 +18,7 @@ from docqa.services.ingest import IngestError, extract_text, ingest_document
 from tests.test_api import PASSWORD, make_client, upload_text
 from tests.test_modes import REFUNDS
 from tests.test_stream import ask_stream, parse_sse, text_of
+from tests.neural import require_neural_model
 
 pytestmark = pytest.mark.django_db
 
@@ -85,7 +86,7 @@ def test_hash_embeddings_handle_awkward_text(text):
 
 
 def test_neural_embeddings_handle_awkward_text(settings):
-    pytest.importorskip("fastembed")
+    require_neural_model()
     settings.EMBEDDING_BACKEND = "fastembed"
     for text in ("", "???", "\U0001f600" * 50, "\u4e2d\u6587\u6587\u672c", "a" * 5000):
         assert len(embed_query(text)) == 384

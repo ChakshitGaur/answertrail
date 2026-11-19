@@ -57,3 +57,28 @@ jobs:
         run: |
           python manage.py migrate --noinput
           python manage.py eval_retrieval --backend fastembed --show-misses --routing
+
+  docker:
+    # the image is what gets deployed, so build it and check that it starts and reports healthy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t answertrail:ci .
+      - name: Start it and wait for the health check
+        run: |
+          docker run -d --name at -p 8000:8000 -e DJANGO_DEBUG=0 \
+            -e DJANGO_SECRET_KEY=ci-only-not-a-real-secret-key-0000000000000000000000 answertrail:ci
+          for i in $(seq 1 40); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' at)
+            echo "health: $state"
+            [ "$state" = healthy ] && break
+            [ "$(docker inspect -f '{{.State.Running}}' at)" = true ] || break
+            sleep 3
+          done
+          docker logs at
+          [ "$state" = healthy ]
+      - name: Runs as a non-root user and serves the app
+        run: |
+          [ "$(docker exec at id -u)" != 0 ]
+          curl -fsS http://localhost:8000/ | grep -q "Answer Trail"
