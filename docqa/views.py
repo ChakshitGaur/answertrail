@@ -22,7 +22,7 @@ from docqa.serializers import (
     DocumentUploadSerializer,
     RegisterSerializer,
 )
-from docqa.services import llm, retrieval, routing
+from docqa.services import llm, retrieval, routing, usage
 from docqa.services.ingest import IngestError, extract_text, start_ingest
 
 
@@ -128,6 +128,18 @@ def _plan(request, data):
     )
 
 
+def _uses_model(plan) -> bool:
+    return not plan.message and llm.is_configured()
+
+
+def _limit_reached(request, plan):
+    """A 429 response if this question would call the model and today's allowance is spent, else None."""
+    if _uses_model(plan) and not usage.try_spend(request.user):
+        detail = usage.LIMIT_MESSAGE.format(limit=settings.DAILY_MODEL_QUESTIONS)
+        return Response({"detail": detail}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+    return None
+
+
 def _meta(plan) -> dict:
     """What the UI needs to label an answer: where it comes from, and what was actually searched."""
     return {
@@ -152,6 +164,9 @@ class AskStreamView(APIView):
         plan = _plan(request, data)  # evaluated now: the generator below must not touch the database
         if plan is None:
             return Response({"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND)
+        limited = _limit_reached(request, plan)
+        if limited:
+            return limited
 
         def events():
             yield _sse("sources", {"sources": plan.sources, **_meta(plan)})
@@ -196,6 +211,9 @@ class AskView(APIView):
         plan = _plan(request, data)
         if plan is None:
             return Response({"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND)
+        limited = _limit_reached(request, plan)
+        if limited:
+            return limited
         mode, sources = plan.mode, plan.sources
         try:
             if plan.message:

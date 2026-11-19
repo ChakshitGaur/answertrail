@@ -179,6 +179,7 @@ long an answer took. Notes:
 | `INGEST_ASYNC` | `1` | uploads are indexed in a background thread: the upload returns `202` with `status: "processing"` and the document list shows `ready` or `failed`; `0` indexes inside the request (`201`) |
 | `INGEST_TIMEOUT_SECONDS` | `900` | a document still "processing" after this long is shown as failed (e.g. the server restarted mid-way) |
 | `ASK_RATE` | `30/min` | per-user limit on questions (`/api/ask/` and `/api/ask/stream/`), on top of the general 120/min |
+| `DAILY_MODEL_QUESTIONS` | `300` | per-user cap on questions that reach the language model per UTC day (`0` = no cap); answered with `429`. Questions answered without the model do not count |
 | `MAX_UPLOAD_BYTES` | 5 MB | upload limit (the UI checks the same limit) |
 | `DJANGO_DEBUG` | `1` | set `0` in production; then `DJANGO_SECRET_KEY` is required |
 | `DJANGO_ALLOWED_HOSTS` | `*` with debug, else `localhost,127.0.0.1` | comma separated host names the server answers to |
