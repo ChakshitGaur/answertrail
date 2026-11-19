@@ -326,6 +326,17 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 - Free model tiers have quotas. When one is used up the app falls back to the next model and, if all fail,
   says so with the provider's message.
 
+## Evaluating retrieval
+
+`python manage.py eval_retrieval` scores search on `eval/dataset.json`: eight clean policy documents, 47 questions
+(paraphrased and keyword) and 14 unrelated ones. `eval/messy.json` (`--dataset eval/messy.json`) is a harder set of
+six deliberately untidy documents: code-heavy text, a flattened pricing table, a noisy scan with broken
+hyphenation, a chat export, a resume whose education section spans passages, and meeting minutes. With the lexical
+embedder and hybrid search it measures hit-rate@1 0.62 and @5 0.93 against 0.77 and 0.98 on the clean set; its
+two misses are synonym gaps ("cat" vs "animals", "discount" vs "free months"). I could not measure the neural
+model on it from my environment (no model download); CI prints that result on every run, as a report rather than
+a pass/fail check. Add your own documents in the same format to test what you actually upload.
+
 ## Development checks
 
 CI runs the tests with coverage (it fails below 85%), `ruff check .`, `pip-audit` on the pinned dependencies, and

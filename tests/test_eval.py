@@ -16,21 +16,46 @@ KEYWORD = [q for q in DATASET["questions"] if q["kind"] == "keyword"]
 PARAPHRASE = [q for q in DATASET["questions"] if q["kind"] == "paraphrase"]
 
 
-def load_corpus(backend, settings_fixture):
+# A second, deliberately messy set: code-heavy text, a flattened table, a noisy scan (broken hyphenation), a chat
+# export, a resume with a section split across passages, and meeting minutes.
+MESSY = json.loads((settings.BASE_DIR / "eval" / "messy.json").read_text(encoding="utf-8"))
+
+
+def load_corpus(backend, settings_fixture, dataset=DATASET):
     settings_fixture.EMBEDDING_BACKEND = backend
     user, _ = get_user_model().objects.get_or_create(username="eval-user")
     user.documents.all().delete()
-    for doc in DATASET["documents"]:
+    for doc in dataset["documents"]:
         ingest_document(user, doc["title"], doc["text"])
     return user
 
 
-def test_every_evidence_span_exists_in_exactly_one_document():
+@pytest.mark.parametrize("dataset", [DATASET, MESSY], ids=["clean", "messy"])
+def test_every_evidence_span_exists_in_exactly_one_document(dataset):
     """Guards the dataset itself: labels must be answerable and unambiguous."""
-    texts = {d["title"]: " ".join(d["text"].lower().split()) for d in DATASET["documents"]}
-    for item in DATASET["questions"]:
+    texts = {d["title"]: " ".join(d["text"].lower().split()) for d in dataset["documents"]}
+    for item in dataset["questions"]:
         owners = [t for t, text in texts.items() if item["evidence"].lower() in text]
         assert len(owners) == 1, (item["q"], owners)
+
+
+def test_messy_dataset_is_not_trivially_small():
+    kinds = {q["kind"] for q in MESSY["questions"]}
+    assert kinds == {"keyword", "paraphrase"} and len(MESSY["questions"]) >= 25 and len(MESSY["off_topic"]) >= 10
+
+
+def test_messy_documents_are_harder_than_the_clean_ones_for_the_weak_embedder(settings):
+    clean = evaluate(load_corpus("hash", settings), DATASET["questions"], [1, 5], hybrid=True)
+    messy = evaluate(load_corpus("hash", settings, MESSY), MESSY["questions"], [1, 5], hybrid=True)
+    assert messy.hit_rate[1] < clean.hit_rate[1]  # measured 0.621 vs 0.766: the set is doing its job
+
+
+def test_messy_set_hash_baseline_does_not_regress(settings):
+    user = load_corpus("hash", settings, MESSY)
+    vector = evaluate(user, MESSY["questions"], [1, 3, 5], hybrid=False)
+    hybrid = evaluate(user, MESSY["questions"], [1, 3, 5], hybrid=True)
+    assert hybrid.hit_rate[5] >= 0.85  # measured 0.931 (misses: "cat" vs "animals", "discount" vs "free months")
+    assert hybrid.mrr > vector.mrr + 0.05  # measured 0.639 -> 0.761
 
 
 def test_dataset_has_both_question_kinds_and_off_topic_questions():
