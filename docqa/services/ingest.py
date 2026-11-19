@@ -12,6 +12,16 @@ class IngestError(ValueError):
     pass
 
 
+def _decode(data: bytes) -> str:
+    """Text files come in several encodings; guessing wrong would silently store garbage."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")  # Windows "ANSI": covers Latin-1 accents and smart quotes
+
+
 def extract_text(filename: str, data: bytes) -> str:
     name = filename.lower()
     if name.endswith(".pdf"):
@@ -23,7 +33,7 @@ def extract_text(filename: str, data: bytes) -> str:
         except Exception as exc:
             raise IngestError(f"Could not read PDF: {exc}") from exc
     if name.endswith((".txt", ".md")):
-        return data.decode("utf-8", errors="replace")
+        return _decode(data)
     raise IngestError("Unsupported file type; use .pdf, .txt or .md")
 
 
@@ -36,7 +46,7 @@ def _clean(value: str) -> str:
 def ingest_document(user, title: str, text: str) -> Document:
     title = _clean(title).strip()[:255] or "Untitled"
     pieces = chunk_text(_clean(text), settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
-    if not pieces:
+    if not pieces or not any(ch.isalnum() for ch in "".join(pieces)):
         raise IngestError("Document contains no extractable text")
     vectors = embed_passages(pieces)
     doc = Document.objects.create(owner=user, title=title)
