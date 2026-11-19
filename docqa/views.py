@@ -4,6 +4,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Count
+from django.utils import timezone
 from django.http import StreamingHttpResponse
 from rest_framework import mixins, status, viewsets
 from rest_framework.authtoken.models import Token
@@ -11,7 +12,7 @@ from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from docqa.models import Document
@@ -22,7 +23,7 @@ from docqa.serializers import (
     RegisterSerializer,
 )
 from docqa.services import llm, retrieval, routing
-from docqa.services.ingest import IngestError, extract_text, ingest_document
+from docqa.services.ingest import IngestError, extract_text, start_ingest
 
 
 class AuthRateThrottle(AnonRateThrottle):
@@ -74,6 +75,14 @@ class DocumentViewSet(
             .order_by("-created_at", "-id")
         )
 
+    def list(self, request, *args, **kwargs):
+        # indexing that never finished (the server restarted mid-way) must not show "processing" forever
+        cutoff = timezone.now() - timezone.timedelta(seconds=settings.INGEST_TIMEOUT_SECONDS)
+        Document.objects.filter(owner=request.user, status="processing", created_at__lt=cutoff).update(
+            status="failed", error="Indexing was interrupted. Delete this document and upload it again."
+        )
+        return super().list(request, *args, **kwargs)
+
     def create(self, request):
         limit = settings.MAX_DOCUMENTS_PER_USER
         if limit and Document.objects.filter(owner=request.user).count() >= limit:
@@ -96,9 +105,11 @@ class DocumentViewSet(
             else:
                 text = ser.validated_data["text"]
                 title = ser.validated_data["title"]
-            doc = ingest_document(request.user, title, text)
+            doc = start_ingest(request.user, title, text)
         except IngestError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if doc.status == "processing":  # indexing continues in the background; the client polls the list
+            return Response(DocumentSerializer(doc).data, status=status.HTTP_202_ACCEPTED)
         retrieval.prime(request.user)  # so the first question after an upload is as fast as the rest
         return Response(DocumentSerializer(doc).data, status=status.HTTP_201_CREATED)
 
@@ -130,6 +141,9 @@ def _meta(plan) -> dict:
 
 class AskStreamView(APIView):
     """Server-sent events: `sources` (with the answer mode), then `token` pieces, then `done`/`error`."""
+
+    throttle_classes = [UserRateThrottle, ScopedRateThrottle]
+    throttle_scope = "ask"  # each question can cost model calls, so it has its own, lower limit
 
     def post(self, request):
         ser = AskSerializer(data=request.data)
@@ -172,6 +186,9 @@ class AskStreamView(APIView):
 
 
 class AskView(APIView):
+    throttle_classes = [UserRateThrottle, ScopedRateThrottle]
+    throttle_scope = "ask"  # each question can cost model calls, so it has its own, lower limit
+
     def post(self, request):
         ser = AskSerializer(data=request.data)
         ser.is_valid(raise_exception=True)

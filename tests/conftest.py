@@ -27,6 +27,7 @@ def isolated_from_local_config(settings, monkeypatch):
     settings.RELEVANCE_THRESHOLD = -1.0
     settings.LLM_REASONING_EFFORT = settings.LLM_REASONING_EFFORT_GENERAL = ""
     settings.WARMUP_EMBEDDINGS = False
+    settings.INGEST_ASYNC = False  # tests index inline; the background path has its own tests
     from docqa.services import llm, retrieval
 
     from django.core.cache import cache
@@ -42,7 +43,7 @@ def no_throttle(monkeypatch):
     """For tests that deliberately send hundreds of requests."""
     from rest_framework.throttling import SimpleRateThrottle
 
-    monkeypatch.setattr(SimpleRateThrottle, "THROTTLE_RATES", {"user": "1000000/min", "auth": "1000000/min"})
+    monkeypatch.setattr(SimpleRateThrottle, "THROTTLE_RATES", {"user": "1000000/min", "auth": "1000000/min", "ask": "1000000/min"})
 
 
 @pytest.fixture

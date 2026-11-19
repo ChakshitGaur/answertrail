@@ -29,6 +29,9 @@ class Document(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="documents"
     )
     title = models.CharField(max_length=255)
+    # "processing": being split and embedded in the background; searchable only once "ready"
+    status = models.CharField(max_length=12, default="ready")
+    error = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
