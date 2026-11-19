@@ -82,6 +82,7 @@ def test_background_reindex_keeps_old_passages_until_the_new_ones_are_ready(sett
     doc = upload_text(c, "Policy", TEXT)
     old = set(Chunk.objects.filter(document_id=doc["id"]).values_list("id", flat=True))
     settings.INGEST_ASYNC = True
+    settings.INGEST_MAX_ATTEMPTS = 1
 
     def boom(texts):
         raise RuntimeError("embedding service down")
@@ -101,16 +102,15 @@ def test_background_reindex_keeps_old_passages_until_the_new_ones_are_ready(sett
     assert set(Chunk.objects.filter(document_id=doc["id"]).values_list("id", flat=True)) == old
 
 
-def test_reindex_that_never_finished_does_not_destroy_a_good_document(settings):
-    import datetime
-
+def test_reindex_that_keeps_failing_does_not_destroy_a_good_document(settings):
     from django.utils import timezone
 
-    settings.INGEST_TIMEOUT_SECONDS = 60
+    from docqa.services import ingest
+
+    settings.INGEST_MAX_ATTEMPTS = 2
     c = make_client()
     doc = upload_text(c, "Policy", TEXT)
-    Document.objects.filter(pk=doc["id"]).update(
-        status="processing", processing_since=timezone.now() - datetime.timedelta(minutes=5)
-    )
-    listed = c.get("/api/documents/").json()[0]
-    assert listed["status"] == "ready" and "interrupted" in listed["error"].lower()
+    Document.objects.filter(pk=doc["id"]).update(status="processing", processing_since=timezone.now(), attempts=2)
+    ingest.run_pending()  # gives up on it: its old passages are still good
+    listed = c.get(f"/api/documents/{doc['id']}/").json()
+    assert listed["status"] == "ready" and "2 attempts" in listed["error"] and listed["chunk_count"] >= 1

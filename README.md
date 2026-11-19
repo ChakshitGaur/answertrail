@@ -156,10 +156,8 @@ long an answer took. Notes:
   per question), and its libraries are imported at startup, not on the first question (about 2 s).
 - The follow-up rewrite is optional, so it gets one attempt with an 8 s limit and no fallback models; if it
   fails the question is searched as typed. Questions of six or more words with no reference word are not rewritten.
-- Ingestion is about 26 chunks per second on this laptop (a 200 KB document takes about 20 s). It now runs in a
-  background thread (one document at a time), so the upload returns at once and the document list shows
-  "Indexing..." until it is ready. It is an in-process thread, not a separate queue: a server restart drops
-  unfinished work (the document then shows as failed after `INGEST_TIMEOUT_SECONDS`).
+- Ingestion is about 26 chunks per second on this laptop (a 200 KB document takes about 20 s). It does not run
+  inside the upload request: the upload returns at once and the document waits in a queue (see Indexing queue).
 
 ## Configuration
 
@@ -176,8 +174,11 @@ long an answer took. Notes:
 | `WARMUP_EMBEDDINGS` | `0` | `1` loads the search model at startup (the launch script and docker-compose set it) |
 | `RELEVANCE_THRESHOLD` | per embedder | best-passage similarity needed to answer from documents (see Answer modes) |
 | `DATABASE_URL` | SQLite file | `postgres://user:pass@host:5432/db` enables pgvector |
-| `INGEST_ASYNC` | `1` | uploads are indexed in a background thread: the upload returns `202` with `status: "processing"` and the document list shows `ready` or `failed`; `0` indexes inside the request (`201`) |
-| `INGEST_TIMEOUT_SECONDS` | `900` | a document still "processing" after this long is shown as failed (e.g. the server restarted mid-way) |
+| `INGEST_ASYNC` | `1` | uploads are queued and indexed by a worker: the upload returns `202` with `status: "processing"` and the document list shows `ready` or `failed`; `0` indexes inside the request (`201`) |
+| `INGEST_EMBEDDED_WORKER` | `1` | each server process runs a worker thread; `0` if you run `manage.py run_ingest_worker` as its own process |
+| `INGEST_LEASE_SECONDS` | `900` | how long a worker owns a document before another may take it over (keep it above your slowest file's indexing time) |
+| `INGEST_MAX_ATTEMPTS` | `3` | a document that fails (or kills its worker) this many times is marked failed |
+| `INGEST_POLL_SECONDS` | `5` | how often an idle worker looks for waiting documents |
 | `ASK_RATE` | `30/min` | per-user limit on questions (`/api/ask/` and `/api/ask/stream/`), on top of the general 120/min |
 | `DAILY_MODEL_QUESTIONS` | `300` | per-user cap on questions that reach the language model per UTC day (`0` = no cap); answered with `429`. Questions answered without the model do not count |
 | `MAX_UPLOAD_BYTES` | 5 MB | upload limit (the UI checks the same limit) |
@@ -326,6 +327,25 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 - Free model tiers have quotas. When one is used up the app falls back to the next model and, if all fail,
   says so with the provider's message.
 
+## Indexing queue
+
+Uploads are not indexed inside the request. The file is read and checked, the document is stored with
+`status: "processing"`, and a worker splits and embeds it. **The queue is the database**: a worker claims the oldest
+waiting document with one atomic update, so two workers never take the same one, and nothing is held in memory.
+
+- **Restarts lose nothing.** A worker that dies (restart, crash, out of memory) leaves its claim to run out after
+  `INGEST_LEASE_SECONDS`; any worker then takes the document over. Waiting documents are picked up when the server
+  next starts serving, no re-upload needed. (Checked end to end: queued a document, killed the server, started a
+  new one, and it was indexed.)
+- **Failures are retried, then reported.** A temporary failure is retried after a minute, up to
+  `INGEST_MAX_ATTEMPTS` times; then the document shows `failed` with the reason (a failed *re-index* keeps the old
+  passages and stays `ready`). A document that keeps killing its workers is given up on the same way.
+- **Embedded or separate workers.** By default each server process runs one worker thread. To scale, set
+  `INGEST_EMBEDDED_WORKER=0` on the web servers and run `python manage.py run_ingest_worker` as separate processes
+  (several are fine); `--once` indexes what is waiting and exits. Use PostgreSQL if several processes write at once.
+- No Redis, Celery or other broker is needed. The trade-off: workers poll the database every few seconds, so this
+  suits tens of uploads, not thousands per second.
+
 ## Evaluating retrieval
 
 `python manage.py eval_retrieval` scores search on `eval/dataset.json`: eight clean policy documents, 47 questions
@@ -333,9 +353,11 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 six deliberately untidy documents: code-heavy text, a flattened pricing table, a noisy scan with broken
 hyphenation, a chat export, a resume whose education section spans passages, and meeting minutes. With the lexical
 embedder and hybrid search it measures hit-rate@1 0.62 and @5 0.93 against 0.77 and 0.98 on the clean set; its
-two misses are synonym gaps ("cat" vs "animals", "discount" vs "free months"). I could not measure the neural
-model on it from my environment (no model download); CI prints that result on every run, as a report rather than
-a pass/fail check. Add your own documents in the same format to test what you actually upload.
+two misses are synonym gaps ("cat" vs "animals", "discount" vs "free months"). CI runs the neural model on it as a report (not a pass/fail check): hit-rate@1 0.79 and @5 0.97, MRR 0.87, with
+one miss (the "discount" question). The same run shows the Auto-mode cutoff is **not** clean on untidy documents:
+the lowest on-topic question scored 0.503 and the highest off-topic one 0.594, overlapping the shipped 0.56, so
+some on-topic questions get a general answer and some off-topic ones reach the model, which then declines them
+(see Answer modes). Recalibrate on your own documents. Add your own documents in the same format to test what you actually upload.
 
 ## Development checks
 

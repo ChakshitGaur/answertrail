@@ -36,7 +36,11 @@ class Document(models.Model):
     # documents added before this existed have none and cannot be re-indexed
     source_text = models.TextField(blank=True, default="")
     reindexable = models.BooleanField(default=False)
-    processing_since = models.DateTimeField(null=True, blank=True)  # when indexing (or re-indexing) last started
+    processing_since = models.DateTimeField(null=True, blank=True)  # when indexing (or re-indexing) was queued
+    # the indexing queue is these rows: status "processing" is "waiting", or "being worked on" while claimed_at is
+    # fresh. A worker that dies leaves its claim to expire (INGEST_LEASE_SECONDS) and another picks the document up.
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

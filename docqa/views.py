@@ -3,9 +3,8 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
+from django.db.models import Count
 from django.http import StreamingHttpResponse
-from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
@@ -24,7 +23,7 @@ from docqa.serializers import (
     DocumentUploadSerializer,
     RegisterSerializer,
 )
-from docqa.services import llm, retrieval, routing, usage
+from docqa.services import ingest, llm, retrieval, routing, usage
 from docqa.services.ingest import IngestError, extract_text, start_ingest, start_reindex
 
 
@@ -79,18 +78,7 @@ class DocumentViewSet(
         )
 
     def list(self, request, *args, **kwargs):
-        # indexing that never finished (the server restarted mid-way) must not show "processing" forever
-        cutoff = timezone.now() - timezone.timedelta(seconds=settings.INGEST_TIMEOUT_SECONDS)
-        stuck = Document.objects.filter(owner=request.user, status="processing").filter(
-            Q(processing_since__lt=cutoff) | Q(processing_since__isnull=True, created_at__lt=cutoff)
-        )
-        for doc in stuck:
-            if doc.chunks.exists():  # a re-index that never finished: the old passages are still good
-                stuck.filter(pk=doc.pk).update(status="ready", error="Re-indexing was interrupted.")
-            else:
-                stuck.filter(pk=doc.pk).update(
-                    status="failed", error="Indexing was interrupted. Delete this document and upload it again."
-                )
+        ingest.ensure_worker()  # after a restart, this is what picks up documents that were still waiting
         return super().list(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):

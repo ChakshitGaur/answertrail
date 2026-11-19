@@ -1,10 +1,10 @@
 import io
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
-from django.db import connection, transaction
+from django.db import close_old_connections, connection, transaction
+from django.db.models import F, Q
 from django.utils import timezone
 
 from docqa.models import Chunk, Document
@@ -91,54 +91,144 @@ def ingest_document(user, title: str, text: str) -> Document:
     return doc
 
 
-_executor = None
-_executor_lock = threading.Lock()
+# ---- the indexing queue -----------------------------------------------------------------------
+#
+# The queue is the Document table: status "processing" means waiting (claimed_at empty) or being worked on
+# (claimed_at inside the lease). A worker claims a document with one conditional UPDATE, so two workers never
+# take the same one, and a worker that dies simply lets its claim expire. Nothing is held in memory, so a restart
+# loses no work.
+
+_RETRY_DELAY_SECONDS = 60  # after a failure that may be temporary, the document is tried again this much later
 
 
-def _pool() -> ThreadPoolExecutor:
-    global _executor
-    with _executor_lock:
-        if _executor is None:  # one at a time: embedding is CPU-bound, and two big files at once only slow both
-            _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
-        return _executor
+def _claimable(now):
+    lease_ends_before = now - timezone.timedelta(seconds=settings.INGEST_LEASE_SECONDS)
+    return Q(status="processing") & (Q(claimed_at__isnull=True) | Q(claimed_at__lt=lease_ends_before))
 
 
-def _index_in_background(doc_id: int, pieces: list[str], user_id: int) -> None:
+def _give_up(doc_id: int, message: str) -> None:
+    """Stop retrying. A first indexing that failed leaves nothing to search: "failed". A re-index that failed leaves
+    the old passages in place: the document stays "ready", with the reason attached."""
+    has_chunks = Chunk.objects.filter(document_id=doc_id).exists()
+    Document.objects.filter(pk=doc_id).update(
+        status="ready" if has_chunks else "failed", error=message[:255], claimed_at=None
+    )
+
+
+def claim_next() -> Document | None:
+    """Take the oldest document that is waiting (or whose worker's lease ran out). None if there is none."""
+    now = timezone.now()
+    for doc in Document.objects.defer("source_text").filter(_claimable(now)).order_by("processing_since", "id")[:10]:
+        if doc.attempts >= settings.INGEST_MAX_ATTEMPTS:  # kept killing its workers, or kept failing
+            _give_up(doc.pk, f"Indexing failed after {doc.attempts} attempts.")
+            continue
+        won = Document.objects.filter(_claimable(now), pk=doc.pk).update(
+            claimed_at=now, attempts=F("attempts") + 1
+        )
+        if won:
+            doc.attempts += 1
+            return doc
+    return None
+
+
+def _index_claimed(doc: Document) -> None:
+    from docqa.services import retrieval
+
     try:
-        doc = Document.objects.defer("source_text").filter(pk=doc_id).first()
-        if doc is None:  # deleted while it waited
-            return
-        _store_chunks(doc, pieces)
-        from django.contrib.auth import get_user_model
-
-        from docqa.services import retrieval
-
-        retrieval.prime(get_user_model().objects.get(pk=user_id))
+        full = Document.objects.get(pk=doc.pk)  # with its source text
+        _, pieces = _prepare(full.title, full.source_text)
+        _store_chunks(full, pieces)
+        retrieval.prime(full.owner)
+    except Document.DoesNotExist:  # deleted while it waited
+        return
     except Exception as exc:
-        log.exception("indexing document %s failed", doc_id)
-        message = f"Indexing failed: {exc}"[:255]
-        # a first indexing that failed leaves nothing to search: "failed". A re-index that failed leaves the old
-        # passages in place: the document stays "ready", with the reason attached.
-        has_chunks = Chunk.objects.filter(document_id=doc_id).exists()
-        Document.objects.filter(pk=doc_id).update(status="ready" if has_chunks else "failed", error=message)
+        message = f"Indexing failed: {exc}"
+        permanent = isinstance(exc, IngestError) or doc.attempts >= settings.INGEST_MAX_ATTEMPTS
+        log.exception("indexing document %s failed (attempt %s)", doc.pk, doc.attempts)
+        if permanent:
+            _give_up(doc.pk, message)
+        else:  # try again after a short pause: claim again once the (shortened) lease has run out
+            retry_at = timezone.now() - timezone.timedelta(seconds=settings.INGEST_LEASE_SECONDS - _RETRY_DELAY_SECONDS)
+            Document.objects.filter(pk=doc.pk).update(claimed_at=retry_at, error=message[:255])
+
+
+def run_pending(limit: int | None = None) -> int:
+    """Index waiting documents, one after another, until there are none (or `limit` were done). Returns how many."""
+    done = 0
+    while limit is None or done < limit:
+        doc = claim_next()
+        if doc is None:
+            break
+        _index_claimed(doc)
+        done += 1
+    return done
+
+
+# one worker thread per server process (INGEST_EMBEDDED_WORKER); embedding is CPU-bound, so one at a time
+_worker: threading.Thread | None = None
+_worker_lock = threading.Lock()
+_wake = threading.Event()
+_stop = threading.Event()
+
+
+def _worker_loop() -> None:
+    try:
+        while not _stop.is_set():
+            try:
+                worked = run_pending(limit=1)
+            except Exception:  # e.g. the database is briefly unavailable: wait and look again
+                log.exception("ingest worker error")
+                worked = 0
+            close_old_connections()
+            if not worked:
+                _wake.wait(settings.INGEST_POLL_SECONDS)
+                _wake.clear()
     finally:
-        connection.close()  # this thread's own database connection
+        connection.close()
+
+
+def ensure_worker() -> None:
+    """Start this process's worker thread if it is enabled and not running. Cheap; safe to call often."""
+    global _worker
+    if not (settings.INGEST_ASYNC and settings.INGEST_EMBEDDED_WORKER):
+        return
+    with _worker_lock:
+        if _worker is None or not _worker.is_alive():
+            _stop.clear()
+            _worker = threading.Thread(target=_worker_loop, name="ingest-worker", daemon=True)
+            _worker.start()
+
+
+def stop_worker(timeout: float = 10) -> None:
+    """Stop this process's worker thread and wait for it (used by tests and clean shutdowns)."""
+    global _worker
+    with _worker_lock:
+        worker, _worker = _worker, None
+    if worker is not None:
+        _stop.set()
+        _wake.set()
+        worker.join(timeout)
+
+
+def _enqueue(doc_id: int) -> None:
+    _wake.set()  # a sleeping worker looks now instead of at its next poll
+    ensure_worker()
 
 
 def start_ingest(user, title: str, text: str) -> Document:
-    """Validate and accept a document; with INGEST_ASYNC the embedding then runs in the background.
+    """Validate and accept a document; with INGEST_ASYNC it is queued and indexed by a worker.
 
     Returns at once with status "processing" (the passages appear when it is "ready"), or, with
     INGEST_ASYNC off, after indexing with status "ready".
     """
     if not settings.INGEST_ASYNC:
         return ingest_document(user, title, text)
-    title, pieces = _prepare(title, text)
+    title, _ = _prepare(title, text)  # the cheap checks now, so an unindexable document is refused immediately
     doc = Document.objects.create(
         owner=user, title=title, status="processing", source_text=_clean(text), reindexable=True,
         processing_since=timezone.now(),
     )
-    _pool().submit(_index_in_background, doc.pk, pieces, user.pk)
+    _enqueue(doc.pk)
     return doc
 
 
@@ -150,7 +240,9 @@ def start_reindex(doc: Document) -> Document:
     if not settings.INGEST_ASYNC:
         _store_chunks(doc, pieces)
         return doc
-    Document.objects.filter(pk=doc.pk).update(status="processing", error="", processing_since=timezone.now())
+    Document.objects.filter(pk=doc.pk).update(
+        status="processing", error="", processing_since=timezone.now(), claimed_at=None, attempts=0
+    )
     doc.status, doc.error = "processing", ""
-    _pool().submit(_index_in_background, doc.pk, pieces, doc.owner_id)
+    _enqueue(doc.pk)
     return doc

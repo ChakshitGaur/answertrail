@@ -2,6 +2,7 @@ import time
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import connection
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
@@ -47,6 +48,7 @@ def test_failed_indexing_is_reported_not_left_processing(settings, monkeypatch):
     from docqa.services import ingest
 
     settings.INGEST_ASYNC = True
+    settings.INGEST_MAX_ATTEMPTS = 1
 
     def boom(texts):
         raise RuntimeError("embedding service down")
@@ -60,25 +62,155 @@ def test_failed_indexing_is_reported_not_left_processing(settings, monkeypatch):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_a_temporary_failure_is_retried_and_then_succeeds(settings, monkeypatch):
+    from docqa.services import ingest
+
+    settings.INGEST_ASYNC = True
+    settings.INGEST_EMBEDDED_WORKER = False  # this test is the worker
+    monkeypatch.setattr(ingest, "_RETRY_DELAY_SECONDS", 0)  # retry at once
+    real, calls = ingest.embed_passages, []
+
+    def flaky(texts):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("temporary hiccup")
+        return real(texts)
+
+    monkeypatch.setattr(ingest, "embed_passages", flaky)
+    c, user = _client("bg2b")
+    doc_id = c.post("/api/documents/", {"title": "x", "text": TEXT}, format="json").json()["id"]
+    assert ingest.run_pending() == 2  # first attempt failed, the retry worked
+    doc = Document.objects.get(pk=doc_id)
+    assert doc.status == "ready" and doc.attempts == 2 and doc.error == ""
+    assert Chunk.objects.filter(document=doc).exists()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_document_deleted_while_waiting_is_skipped(settings):
     from docqa.services import ingest
 
     settings.INGEST_ASYNC = True
+    settings.INGEST_EMBEDDED_WORKER = False
     c, user = _client("bg3")
-    doc = Document.objects.create(owner=user, title="gone", status="processing")
-    doc.delete()
-    ingest._index_in_background(doc.pk, ["some text here"], user.pk)  # must not raise
+    doc_id = c.post("/api/documents/", {"title": "gone", "text": TEXT}, format="json").json()["id"]
+    c.delete(f"/api/documents/{doc_id}/")
+    assert ingest.run_pending() == 0  # nothing left to do, and no error
     assert not Chunk.objects.exists()
 
 
 @pytest.mark.django_db
-def test_stale_processing_document_is_marked_failed(settings):
-    settings.INGEST_TIMEOUT_SECONDS = 60
+def test_work_survives_a_restart(settings):
+    """A document whose worker died (its claim ran out) is picked up again, with no one having to re-upload it."""
+    import datetime
+
+    from django.utils import timezone
+
+    from docqa.services import ingest
+
+    settings.INGEST_LEASE_SECONDS = 60
     c, user = _client("bg4")
-    doc = Document.objects.create(owner=user, title="stuck", status="processing")
-    Document.objects.filter(pk=doc.pk).update(created_at=doc.created_at - __import__("datetime").timedelta(minutes=5))
-    listed = c.get("/api/documents/").json()
-    assert listed[0]["status"] == "failed" and "interrupted" in listed[0]["error"].lower()
+    doc = Document.objects.create(
+        owner=user, title="orphan", status="processing", source_text=TEXT, reindexable=True,
+        processing_since=timezone.now(), claimed_at=timezone.now() - datetime.timedelta(minutes=5), attempts=1,
+    )
+    assert ingest.run_pending() == 1
+    doc.refresh_from_db()
+    assert doc.status == "ready" and Chunk.objects.filter(document=doc).exists()
+
+
+@pytest.mark.django_db
+def test_a_document_being_worked_on_is_not_taken_by_a_second_worker(settings):
+    from django.utils import timezone
+
+    from docqa.services import ingest
+
+    settings.INGEST_LEASE_SECONDS = 600
+    c, user = _client("bg4b")
+    Document.objects.create(
+        owner=user, title="busy", status="processing", source_text=TEXT, reindexable=True,
+        processing_since=timezone.now(), claimed_at=timezone.now(),
+    )
+    assert ingest.claim_next() is None
+
+
+@pytest.mark.django_db
+def test_waiting_documents_are_taken_oldest_first_and_only_once(settings):
+    import datetime
+
+    from django.utils import timezone
+
+    from docqa.services import ingest
+
+    c, user = _client("bg4c")
+    now = timezone.now()
+    old = Document.objects.create(owner=user, title="old", status="processing", source_text=TEXT,
+                                  processing_since=now - datetime.timedelta(minutes=2))
+    new = Document.objects.create(owner=user, title="new", status="processing", source_text=TEXT,
+                                  processing_since=now)
+    first, second, third = ingest.claim_next(), ingest.claim_next(), ingest.claim_next()
+    assert (first.pk, second.pk, third) == (old.pk, new.pk, None)
+
+
+@pytest.mark.django_db
+def test_a_document_that_keeps_failing_is_given_up_on(settings):
+    from django.utils import timezone
+
+    from docqa.services import ingest
+
+    settings.INGEST_MAX_ATTEMPTS = 3
+    settings.INGEST_LEASE_SECONDS = 60
+    c, user = _client("bg4d")
+    doc = Document.objects.create(
+        owner=user, title="poison", status="processing", source_text=TEXT, reindexable=True,
+        processing_since=timezone.now(), attempts=3,  # three workers already died on it
+    )
+    assert ingest.run_pending() == 0
+    doc.refresh_from_db()
+    assert doc.status == "failed" and "3 attempts" in doc.error
+
+
+@pytest.mark.skipif(connection.vendor != "postgresql", reason="needs a database that allows concurrent writers")
+@pytest.mark.django_db(transaction=True)
+def test_two_workers_never_index_the_same_document_twice(settings, monkeypatch):
+    import threading
+
+    from docqa.services import ingest
+
+    settings.INGEST_ASYNC = True
+    settings.INGEST_EMBEDDED_WORKER = False
+    c, user = _client("bg4e")
+    for n in range(6):
+        c.post("/api/documents/", {"title": f"d{n}", "text": TEXT}, format="json")
+    counts = []
+
+    def work():
+        counts.append(ingest.run_pending())
+
+    threads = [threading.Thread(target=work) for _ in range(3)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert sum(counts) == 6
+    assert set(Document.objects.values_list("attempts", flat=True)) == {1}  # each was claimed exactly once
+    assert not Document.objects.exclude(status="ready").exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_embedded_worker_can_be_turned_off(settings):
+    from docqa.services import ingest
+
+    settings.INGEST_ASYNC = True
+    settings.INGEST_EMBEDDED_WORKER = False
+    c, _ = _client("bg4f")
+    doc_id = c.post("/api/documents/", {"title": "x", "text": TEXT}, format="json").json()["id"]
+    import time
+
+    time.sleep(0.5)
+    assert Document.objects.get(pk=doc_id).status == "processing"  # waits for run_ingest_worker
+    from django.core.management import call_command
+
+    call_command("run_ingest_worker", "--once")
+    assert Document.objects.get(pk=doc_id).status == "ready"
+    assert ingest._worker is None
 
 
 @pytest.mark.django_db
