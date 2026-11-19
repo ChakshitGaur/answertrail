@@ -75,9 +75,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .uploads .bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden; }
 .uploads .bar > span { display: block; height: 100%; width: 0; background: var(--accent-mid); transition: width .15s; }
 .uploads .failed { color: var(--danger); }
-.doc-list li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.doc-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .doc-list li:hover { border-color: var(--accent-line); background: var(--accent-soft); }
-.doc-list .meta { flex: 1; min-width: 0; }
+.doc-list .meta { flex: 1 1 100%; min-width: 0; }
+.doc-list .actions { display: flex; gap: 6px; flex-basis: 100%; }
+.doc-list .title input { width: 100%; font-size: .92rem; padding: .15rem .35rem; }
 .doc-list .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .92rem; }
 .doc-list button { padding: .25rem .5rem; font-size: .8rem; }
 .doc-list button.confirm { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }

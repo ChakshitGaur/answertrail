@@ -203,6 +203,8 @@ Put it behind HTTPS and set `DJANGO_SECURE=1`. HSTS preload and include-subdomai
 | POST | `/api/documents/` | multipart `file` (.pdf/.txt/.md) or JSON `{title, text}` -> `202` with `status: "processing"` (poll `GET /api/documents/` until `ready` or `failed`) |
 | GET | `/api/documents/`, `/api/documents/<id>/` | own documents only |
 | DELETE | `/api/documents/<id>/` | removes its chunks too |
+| PATCH | `/api/documents/<id>/` | `{title}`: rename |
+| POST | `/api/documents/<id>/reindex/` | split and embed the stored text again with the current chunk size and embedding model (`202` while it runs, then `status` is `ready`). Only for documents added after this feature (`reindexable: true`); older ones must be uploaded again. A failed re-index keeps the old passages |
 | POST | `/api/ask/` | `{question, mode?, history?, document_id?, top_k?}` -> `{answer, sources[], mode, searched_for, best_similarity}` |
 | POST | `/api/ask/stream/` | same input; Server-Sent Events: `sources` (with `mode`, `searched_for`, `best_similarity`), then `token` pieces, then `done` or `error` |
 

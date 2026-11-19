@@ -200,17 +200,62 @@
       else { del.disabled = false; del.textContent = "Failed"; }
     });
     const when = L.timeAgo(doc.created_at);
+    const busy = doc.status === "processing";
+
+    const titleBox = el("div", { class: "title", text: doc.title, title: doc.title });
+    const rename = el("button", { type: "button", text: "Rename", "aria-label": "Rename " + doc.title });
+    rename.addEventListener("click", () => {
+      const input = el("input", { type: "text", maxlength: "255", "aria-label": "New name" });
+      input.value = doc.title;
+      let done = false;
+      const finish = async (save) => {
+        if (done) return;
+        done = true;
+        const title = input.value.trim();
+        if (save && title && title !== doc.title) {
+          const resp = await api("/api/documents/" + doc.id + "/", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title }),
+          });
+          if (!resp.ok) rename.textContent = "Failed";
+        }
+        await refreshDocs();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") finish(true);
+        else if (e.key === "Escape") { e.stopPropagation(); finish(false); }
+      });
+      input.addEventListener("blur", () => finish(true));
+      titleBox.replaceChildren(input);
+      input.focus();
+      input.select();
+    });
+
+    const reindex = el("button", {
+      type: "button", text: "Re-index", title: "Split and embed this document again with the current settings",
+      "aria-label": "Re-index " + doc.title,
+    });
+    reindex.addEventListener("click", async () => {
+      reindex.disabled = true;
+      const resp = await api("/api/documents/" + doc.id + "/reindex/", { method: "POST" });
+      if (!resp.ok) { reindex.textContent = "Failed"; return; }
+      await refreshDocs();
+    });
+    if (busy) { rename.disabled = true; reindex.disabled = true; del.disabled = true; }
+
     return el("li", {},
       el("div", { class: "meta" },
-        el("div", { class: "title", text: doc.title, title: doc.title }),
+        titleBox,
         el("div", {
           class: doc.status === "failed" ? "failed" : "muted",
           title: doc.error || "",
           text: doc.status === "processing" ? "Indexing..."
             : doc.status === "failed" ? "Failed: " + (doc.error || "could not be indexed")
             : L.plural(doc.chunk_count, "passage") + (when ? " · " + when : ""),
-        })),
-      del);
+        }),
+        doc.status === "ready" && doc.error ? el("div", { class: "failed", text: doc.error }) : null),
+      el("div", { class: "actions" }, rename, doc.reindexable ? reindex : null, del));
   }
 
   /* ---------- answer mode and composer ---------- */
