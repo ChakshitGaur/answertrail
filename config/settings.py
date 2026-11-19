@@ -172,10 +172,17 @@ CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "500"))  # characters
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
 TOKEN_TTL_DAYS = int(os.environ.get("TOKEN_TTL_DAYS", "30"))  # 0 = tokens never expire
 MAX_DOCUMENTS_PER_USER = int(os.environ.get("MAX_DOCUMENTS_PER_USER", "100"))  # 0 = unlimited
-# Uploads are split and embedded in a background thread so a big file does not hold the request (and a server
-# worker) for minutes; the upload returns at once with status "processing". 0 = do it inside the request.
+# Uploads are queued and indexed by a worker, so a big file does not hold the request (and a server worker) for
+# minutes: the upload returns at once with status "processing". The queue lives in the database, so it survives
+# restarts and works with several server processes. 0 = index inside the request instead.
 INGEST_ASYNC = os.environ.get("INGEST_ASYNC", "1") == "1"
-INGEST_TIMEOUT_SECONDS = int(os.environ.get("INGEST_TIMEOUT_SECONDS", "900"))  # "processing" for longer = failed
+# "1": each server process runs a worker thread itself. "0": run `manage.py run_ingest_worker` as its own process.
+INGEST_EMBEDDED_WORKER = os.environ.get("INGEST_EMBEDDED_WORKER", "1") == "1"
+# A worker owns a document for this long; if it dies, another one takes the document over afterwards. Keep it above
+# the time your biggest allowed file takes to index.
+INGEST_LEASE_SECONDS = int(os.environ.get("INGEST_LEASE_SECONDS", "900"))
+INGEST_MAX_ATTEMPTS = int(os.environ.get("INGEST_MAX_ATTEMPTS", "3"))  # then the document is marked failed
+INGEST_POLL_SECONDS = int(os.environ.get("INGEST_POLL_SECONDS", "5"))  # how often an idle worker looks for work
 # Each question that reaches the language model costs money on a paid key. A user can send at most this many
 # per UTC day (0 = no limit); questions answered without the model (not found, passages only) do not count.
 DAILY_MODEL_QUESTIONS = int(os.environ.get("DAILY_MODEL_QUESTIONS", "300"))

@@ -38,6 +38,15 @@ def isolated_from_local_config(settings, monkeypatch):
     cache.clear()  # rate-limit counters live in the cache; one test's requests must not throttle the next
 
 
+@pytest.fixture(autouse=True)
+def _stop_ingest_worker():
+    """A worker thread started by one test must not keep polling a database that has been torn down."""
+    yield
+    from docqa.services import ingest
+
+    ingest.stop_worker()
+
+
 @pytest.fixture
 def no_throttle(monkeypatch):
     """For tests that deliberately send hundreds of requests."""
