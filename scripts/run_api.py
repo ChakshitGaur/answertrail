@@ -11,7 +11,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 os.environ.setdefault("EMBEDDING_BACKEND", "fastembed")
 os.environ.setdefault("WARMUP_EMBEDDINGS", "1")  # load the search model now, not on the first question
 
-from django.core.management import execute_from_command_line
+# the settings above must be in the environment before Django is imported
+from django.core.management import execute_from_command_line  # noqa: E402
 
 execute_from_command_line(["manage.py", "migrate", "-v0"])
 port = os.environ.get("PORT", "8000")  # preview tools and hosts can assign a free port

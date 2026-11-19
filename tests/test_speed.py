@@ -2,7 +2,6 @@
 
 import random
 import sys
-from collections import Counter
 
 import numpy as np
 import pytest

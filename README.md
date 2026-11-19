@@ -325,3 +325,18 @@ job against a real `pgvector/pgvector` Postgres container that also runs the ret
 - Chat history lives in the browser tab only and is lost on reload.
 - Free model tiers have quotas. When one is used up the app falls back to the next model and, if all fail,
   says so with the provider's message.
+
+## Development checks
+
+CI runs the tests with coverage (it fails below 85%), `ruff check .`, `pip-audit` on the pinned dependencies, and
+builds the Docker image. Locally: `pip install ruff pytest-cov`, then `ruff check .` and
+`pytest --cov=docqa --cov=config`.
+
+The Docker image installs the exact versions in `requirements-ml.lock`, so a rebuild gives the same image. CI and
+local installs still use the looser `requirements*.txt` on purpose: they warn early when a new release of a
+dependency breaks something. To update the pins (for example after `pip-audit` reports a vulnerability):
+
+```bash
+pip install uv
+uv pip compile requirements-ml.txt --universal --python-version 3.12 -o requirements-ml.lock
+```

@@ -11,7 +11,6 @@ from docqa.models import Chunk, Document
 from docqa.services.chunking import chunk_text
 from docqa.services.embeddings import embed_passages
 
-
 log = logging.getLogger(__name__)
 
 

@@ -7,7 +7,6 @@ import random
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from tests.pdfs import blank_pdf, text_pdf
 from rest_framework.test import APIClient
 
 from docqa.models import Chunk, Document
@@ -15,10 +14,11 @@ from docqa.services import llm
 from docqa.services.chunking import chunk_text
 from docqa.services.embeddings import embed_passages, embed_query
 from docqa.services.ingest import IngestError, extract_text, ingest_document
+from tests.neural import require_neural_model
+from tests.pdfs import blank_pdf, text_pdf
 from tests.test_api import PASSWORD, make_client, upload_text
 from tests.test_modes import REFUNDS
 from tests.test_stream import ask_stream, parse_sse, text_of
-from tests.neural import require_neural_model
 
 pytestmark = pytest.mark.django_db
 

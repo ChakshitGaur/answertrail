@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from docqa.services.chunking import chunk_text
-from docqa.services.embeddings import embed_passages, embed_query
+from docqa.services.embeddings import embed_query
 
 
 def embed(text):

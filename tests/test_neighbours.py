@@ -1,8 +1,8 @@
 """Neighbouring chunks: a section cut across two chunks is not answered from half of it."""
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.conf import settings as django_settings
+from django.contrib.auth import get_user_model
 
 from docqa.models import Chunk, Document
 from docqa.services import retrieval, routing
