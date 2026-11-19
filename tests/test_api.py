@@ -160,3 +160,31 @@ def test_document_limit_per_user(db, settings):
     body = {"title": "a", "text": "Some text to store. More text here."}
     assert c.post("/api/documents/", body, format="json").status_code == 201
     assert c.post("/api/documents/", body, format="json").status_code == 400
+
+
+def test_document_list_is_newest_first(db):
+    c, _ = _token_client(db, "order")
+    for t in ("first", "second", "third"):
+        c.post("/api/documents/", {"title": t, "text": f"The {t} document has some words."}, format="json")
+    assert [d["title"] for d in c.get("/api/documents/").json()] == ["third", "second", "first"]
+
+
+def test_password_must_not_match_username_or_be_huge(db):
+    from rest_framework.test import APIClient
+
+    c = APIClient()
+    assert c.post("/api/auth/register/", {"username": "samepassword1", "password": "samepassword1"}).status_code == 400
+    assert c.post("/api/auth/register/", {"username": "bigpw", "password": "x1" * 5000}).status_code == 400
+
+
+def test_text_files_in_other_encodings_are_read_correctly():
+    from docqa.services.ingest import extract_text
+
+    assert "café" in extract_text("a.txt", "café au lait.".encode("cp1252"))
+    assert extract_text("a.txt", "hello world.".encode("utf-16")).startswith("hello")
+    assert extract_text("a.txt", b"\xef\xbb\xbfhello").startswith("hello")  # BOM removed
+
+
+def test_document_without_letters_or_digits_is_refused(db):
+    c, _ = _token_client(db, "punct")
+    assert c.post("/api/documents/", {"title": "p", "text": "!!! ??? ..."}, format="json").status_code == 400

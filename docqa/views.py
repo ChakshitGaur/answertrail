@@ -67,7 +67,12 @@ class DocumentViewSet(
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        return Document.objects.filter(owner=self.request.user).annotate(chunk_total=Count("chunks"))
+        # explicit order: Meta.ordering is ignored once a query is grouped by an annotation
+        return (
+            Document.objects.filter(owner=self.request.user)
+            .annotate(chunk_total=Count("chunks"))
+            .order_by("-created_at", "-id")
+        )
 
     def create(self, request):
         limit = settings.MAX_DOCUMENTS_PER_USER

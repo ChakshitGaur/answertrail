@@ -7,16 +7,17 @@ from docqa.models import Document
 
 class RegisterSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, max_length=128)  # a huge password only costs hashing time
 
     def validate_username(self, value):
         if get_user_model().objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError("Username already taken.")
         return value
 
-    def validate_password(self, value):
-        validate_password(value)
-        return value
+    def validate(self, attrs):
+        # checked together so a password that is (or contains) the username is refused
+        validate_password(attrs["password"], user=get_user_model()(username=attrs["username"]))
+        return attrs
 
 
 class DocumentSerializer(serializers.ModelSerializer):
