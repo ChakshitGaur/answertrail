@@ -7,6 +7,7 @@ from django.db import connection
 
 from docqa.services.evaluation import evaluate, routing_report
 from docqa.services.ingest import ingest_document
+from tests.neural import require_neural_model
 
 pytestmark = pytest.mark.django_db
 
@@ -52,7 +53,7 @@ def test_hybrid_search_lifts_the_weak_embedder_a_lot(settings):
 
 
 def test_neural_model_beats_the_lexical_baseline(settings):
-    pytest.importorskip("fastembed")
+    require_neural_model()
     base_user = load_corpus("hash", settings)
     baseline = evaluate(base_user, DATASET["questions"], [1, 5], hybrid=False)
     neural_user = load_corpus("fastembed", settings)
@@ -62,7 +63,7 @@ def test_neural_model_beats_the_lexical_baseline(settings):
 
 
 def test_hybrid_fixes_keyword_questions_for_the_neural_model(settings):
-    pytest.importorskip("fastembed")
+    require_neural_model()
     user = load_corpus("fastembed", settings)
     vector = evaluate(user, KEYWORD, [1, 5], hybrid=False)
     hybrid = evaluate(user, KEYWORD, [1, 5], hybrid=True)
@@ -73,7 +74,7 @@ def test_hybrid_fixes_keyword_questions_for_the_neural_model(settings):
 
 
 def test_neural_similarity_separates_documents_questions_from_unrelated_ones(settings):
-    pytest.importorskip("fastembed")
+    require_neural_model()
     from docqa.services.routing import relevance_threshold
 
     settings.RELEVANCE_THRESHOLD = None  # use the shipped default
