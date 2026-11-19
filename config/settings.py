@@ -176,4 +176,7 @@ MAX_DOCUMENTS_PER_USER = int(os.environ.get("MAX_DOCUMENTS_PER_USER", "100"))  #
 # worker) for minutes; the upload returns at once with status "processing". 0 = do it inside the request.
 INGEST_ASYNC = os.environ.get("INGEST_ASYNC", "1") == "1"
 INGEST_TIMEOUT_SECONDS = int(os.environ.get("INGEST_TIMEOUT_SECONDS", "900"))  # "processing" for longer = failed
+# Each question that reaches the language model costs money on a paid key. A user can send at most this many
+# per UTC day (0 = no limit); questions answered without the model (not found, passages only) do not count.
+DAILY_MODEL_QUESTIONS = int(os.environ.get("DAILY_MODEL_QUESTIONS", "300"))
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))

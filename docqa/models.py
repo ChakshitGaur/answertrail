@@ -56,3 +56,14 @@ class Chunk(models.Model):
                 fields=["document", "index"], name="unique_chunk_index_per_document"
             )
         ]
+
+
+class DailyUsage(models.Model):
+    """How many questions a user sent to the language model on one day (UTC); see DAILY_MODEL_QUESTIONS."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="daily_usage")
+    day = models.DateField()
+    questions = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "day"], name="unique_usage_per_user_day")]
