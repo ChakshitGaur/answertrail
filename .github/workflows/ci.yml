@@ -57,6 +57,9 @@ jobs:
         run: |
           python manage.py migrate --noinput
           python manage.py eval_retrieval --backend fastembed --show-misses --routing
+      - name: Retrieval eval on the messy documents (report only, not a gate)
+        run: |
+          python manage.py eval_retrieval --dataset eval/messy.json --backend fastembed --show-misses --routing
 
   docker:
     # the image is what gets deployed, so build it and check that it starts and reports healthy

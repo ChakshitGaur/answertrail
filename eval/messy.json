@@ -1,0 +1,189 @@
+{
+  "documents": [
+    {
+      "title": "Python Classes Guide",
+      "text": "Classes in Python. A class bundles data and behaviour. Define one with the class keyword:\nclass Animal:\n    def __init__(self, name, sound):\n        self.name = name\n        self.sound = sound\n    def speak(self):\n        return f\"{self.name} says {self.sound}\"\nCreate an instance by calling the class: pet = Animal(\"Rex\", \"woof\") and then pet.speak() returns \"Rex says woof\".\nInheritance. A subclass reuses a parent class: class Dog(Animal): def __init__(self, name): super().__init__(name, \"woof\"). Calling super().__init__ runs the parent constructor so the shared attributes are set up once.\nProperties. The @property decorator turns a method into a read-only attribute, so code such as circle.area reads like a field while the value is computed on demand.\nSpecial methods. Dunder methods customise behaviour: __repr__ controls how an object prints in the console, __eq__ defines what == means, and __len__ makes len(obj) work.\nClass attributes versus instance attributes. A variable assigned directly in the class body, such as legs = 4, is shared by every instance. A variable assigned through self inside __init__ belongs to one instance only.\nCommon interview question: what is the difference between a class method and a static method? A classmethod receives the class as its first argument (cls) while a staticmethod receives neither the class nor the instance.\nList comprehensions. squares = [n * n for n in range(10) if n % 2 == 0] builds a list of the squares of the even numbers below ten in one line.\nExceptions. Wrap risky code in try and except blocks, and use finally for cleanup that must always run, such as closing a file."
+    },
+    {
+      "title": "Plans and Pricing",
+      "text": "Plan | Seats | Price per month | Storage | Support\nStarter | 3 | $12 | 50 GB | Email only\nTeam | 15 | $49 | 500 GB | Email and chat\nBusiness | 60 | $189 | 2 TB | Phone, email and chat\nEnterprise | Unlimited | Custom quote | Unlimited | Dedicated account manager\nAnnual billing. Paying for twelve months up front gives two months free on every plan except Enterprise.\nAdd-ons. Extra storage costs $4 per additional 100 GB per month. Extra seats on the Team plan cost $3.50 each per month.\nTrial. Every new account gets a 14 day free trial of the Team plan, and no credit card is needed to start it.\nCancellation. You can cancel at any time from the billing page, and the plan stays active until the end of the period you already paid for."
+    },
+    {
+      "title": "Scanned Lease Agreement",
+      "text": "RESIDENTIAL  LEASE  AGREE-\nMENT. This agree- ment is made between the Landlord and the Tenant named  above.\n1. TERM. The lease begins on 1 March and runs for twelve (12) months unless ter- minated earlier in accordance with this agreement.\n2. RENT. The Tenant shall pay monthly rent of $1,450 on or be- fore the first day of each month. A late fee of $75 applies to any payment received more than 5 days after the due date.\n3. SECURITY  DEPOSIT. A deposit equal to one month's rent is held by the Landlord and returned within 30 days after the Tenant moves out, less any deduc- tions for damage beyond normal wear.\n4. PETS. No animals are permitted on the premises without prior written consent of the Land- lord. An approved pet carries an additional deposit of $300.\n5. UTILITIES. The Tenant is responsible for electricity and internet. Water, sewer and trash col- lection are included in the rent.\n6. NOTICE. Either party must give sixty (60) days written notice before ending the tenancy at the end of the term."
+    },
+    {
+      "title": "Team Chat Export",
+      "text": "[09:02] Priya: morning all, quick heads up the staging deploy is broken again\n[09:04] Marcus: yeah I saw, the migration for the invoices table fails on null currency\n[09:05] Priya: can you hotfix? I can review right after standup\n[09:11] Marcus: on it. Also reminder the release freeze starts Thursday 5pm and lasts until Monday\n[09:13] Dana: lunch order for friday is going to Mario's, reply with your pick by wed noon\n[09:20] Priya: btw the new on-call rota: week 1 Marcus, week 2 Dana, week 3 me, then it repeats\n[09:31] Marcus: hotfix is up, PR 482. adds a default of USD to the currency column\n[09:35] Priya: approved. merging now\n[09:40] Dana: who has the login for the monitoring dashboard? mine expired\n[09:41] Priya: ask in the security channel, they reset it within an hour usually\n[10:02] Marcus: staging is green again, thanks all"
+    },
+    {
+      "title": "Resume - Jordan Lee",
+      "text": "JORDAN LEE\nBackend engineer. Email jordan.lee@example.com. Based in Denver, Colorado.\nSUMMARY\nEngineer with seven years of experience building payment and logistics services in Python and Go.\nEXPERIENCE\nSenior Backend Engineer, Northwind Payments (2021 to present). Led the migration of the card settlement service from a monolith to eight services, cutting settlement time from 6 hours to 40 minutes. Mentored four junior engineers.\nBackend Engineer, Cargo Route (2018 to 2021). Built the route optimisation API used by 300 delivery drivers, reducing average fuel use by 11 percent.\nEDUCATION\nB.S. in Computer Science, University of Colorado Boulder, graduated 2018 with honours.\nPostgraduate certificate in Distributed Systems, Stanford Online, completed 2022.\nSecondary school: Denver East High School, graduated 2014.\nSKILLS\nPython, Go, PostgreSQL, Kafka, Kubernetes, Terraform.\nCERTIFICATIONS\nAWS Certified Solutions Architect Associate, renewed 2024."
+    },
+    {
+      "title": "Project Atlas Meeting Minutes",
+      "text": "Project Atlas weekly meeting, attendees: Lena, Omar, Ben, Sofia.\nDecision 1. The beta launch moves from 12 June to 26 June because the payment provider certification is still pending.\nDecision 2. Omar will own the data migration plan and present it at the next meeting.\nRisk. The mobile team is down one developer until July, so the offline mode feature is moved to the second release.\nBudget. Spend to date is $212,000 against an approved budget of $300,000, so the project is on track.\nAction items. Lena to confirm the new launch date with marketing by Friday. Ben to finish the load test report by Tuesday. Sofia to schedule customer interviews for the week of 8 June.\nNext meeting: Wednesday at 10:00 in room B4."
+    }
+  ],
+  "questions": [
+    {
+      "q": "How do I call the parent constructor from a subclass?",
+      "evidence": "Calling super().__init__ runs the parent constructor",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "what does the @property decorator do",
+      "evidence": "The @property decorator turns a method into a read-only attribute",
+      "kind": "keyword"
+    },
+    {
+      "q": "Which method controls how an object is displayed when printed in the console?",
+      "evidence": "__repr__ controls how an object prints in the console",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "difference between classmethod and staticmethod",
+      "evidence": "A classmethod receives the class as its first argument (cls)",
+      "kind": "keyword"
+    },
+    {
+      "q": "When is a variable shared between all objects of a class?",
+      "evidence": "A variable assigned directly in the class body, such as legs = 4, is shared by every instance",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How do I make sure cleanup code always runs even after an error?",
+      "evidence": "use finally for cleanup that must always run",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How much does the Team plan cost per month?",
+      "evidence": "Team | 15 | $49 | 500 GB | Email and chat",
+      "kind": "keyword"
+    },
+    {
+      "q": "Is there a discount if I pay for the whole year?",
+      "evidence": "Paying for twelve months up front gives two months free on every plan except Enterprise",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Do I need a credit card to try it?",
+      "evidence": "no credit card is needed to start it",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What does extra storage cost?",
+      "evidence": "Extra storage costs $4 per additional 100 GB per month",
+      "kind": "keyword"
+    },
+    {
+      "q": "Which plan has phone support?",
+      "evidence": "Business | 60 | $189 | 2 TB | Phone, email and chat",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How much is the monthly rent?",
+      "evidence": "monthly rent of $1,450",
+      "kind": "keyword"
+    },
+    {
+      "q": "What happens if I pay the rent late?",
+      "evidence": "A late fee of $75 applies to any payment received more than 5 days after the due date",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Can I keep a cat in the apartment?",
+      "evidence": "No animals are permitted on the premises without prior written consent",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Which utilities are included in the rent?",
+      "evidence": "Water, sewer and trash col- lection are included in the rent",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How much notice must be given to end the tenancy?",
+      "evidence": "Either party must give sixty (60) days written notice",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What was the hotfix PR number?",
+      "evidence": "PR 482",
+      "kind": "keyword"
+    },
+    {
+      "q": "When does the release freeze start?",
+      "evidence": "the release freeze starts Thursday 5pm and lasts until Monday",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Who is on call in the second week?",
+      "evidence": "week 2 Dana",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Why did the staging deploy fail?",
+      "evidence": "the migration for the invoices table fails on null currency",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Where is Friday's lunch coming from?",
+      "evidence": "lunch order for friday is going to Mario's",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "What did Jordan study at university?",
+      "evidence": "B.S. in Computer Science, University of Colorado Boulder",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Which high school did the candidate attend?",
+      "evidence": "Secondary school: Denver East High School, graduated 2014",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How much did settlement time improve at Northwind?",
+      "evidence": "cutting settlement time from 6 hours to 40 minutes",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Does Jordan have any cloud certifications?",
+      "evidence": "AWS Certified Solutions Architect Associate, renewed 2024",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Why was the beta launch delayed?",
+      "evidence": "the payment provider certification is still pending",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "How much of the budget has been spent?",
+      "evidence": "Spend to date is $212,000 against an approved budget of $300,000",
+      "kind": "keyword"
+    },
+    {
+      "q": "Which feature was pushed to the second release?",
+      "evidence": "the offline mode feature is moved to the second release",
+      "kind": "paraphrase"
+    },
+    {
+      "q": "Who is responsible for the data migration plan?",
+      "evidence": "Omar will own the data migration plan",
+      "kind": "paraphrase"
+    }
+  ],
+  "off_topic": [
+    "What is the capital of France?",
+    "Tell me a joke.",
+    "Write a haiku about autumn.",
+    "hi",
+    "thanks, that helps",
+    "Who won the football world cup in 2018?",
+    "What is 15 times 12?",
+    "Explain what a black hole is.",
+    "Recommend a good book about ancient Rome.",
+    "How do vaccines work?",
+    "Translate 'good morning' into Spanish.",
+    "What is the speed of light?"
+  ]
+}
