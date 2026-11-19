@@ -139,7 +139,13 @@
     updateJump();
     showAuth(message);
   }
-  $("logout-btn").addEventListener("click", () => signOut());
+  $("logout-btn").addEventListener("click", () => {
+    // revoke the token on the server too, so a copied token stops working; signing out never waits for it
+    if (state.token) {
+      fetch("/api/auth/logout/", { method: "POST", headers: { Authorization: "Token " + state.token } }).catch(() => {});
+    }
+    signOut();
+  });
 
   function showAuth(message) {
     $("app").hidden = true;
