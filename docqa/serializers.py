@@ -29,7 +29,11 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Document
-        fields = ["id", "title", "created_at", "chunk_count", "status", "error"]
+        fields = ["id", "title", "created_at", "chunk_count", "status", "error", "reindexable"]
+
+
+class DocumentRenameSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=255)
 
 
 class DocumentUploadSerializer(serializers.Serializer):

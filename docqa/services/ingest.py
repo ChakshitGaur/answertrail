@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
 from django.db import connection, transaction
+from django.utils import timezone
 
 from docqa.models import Chunk, Document
 from docqa.services.chunking import chunk_text
@@ -64,8 +65,14 @@ def _prepare(title: str, text: str) -> tuple[str, list[str]]:
 
 
 def _store_chunks(doc: Document, pieces: list[str]) -> None:
+    """Embed the passages and make them the document's chunks, replacing any it had; then mark it ready.
+
+    The embedding happens first and the swap is one transaction, so a document being re-indexed keeps its old
+    passages (and stays searchable) until the new ones are complete.
+    """
     vectors = embed_passages(pieces)
     with transaction.atomic():
+        doc.chunks.all().delete()
         Chunk.objects.bulk_create(
             Chunk(document=doc, index=i, text=p, embedding=v) for i, (p, v) in enumerate(zip(pieces, vectors))
         )
@@ -76,7 +83,7 @@ def _store_chunks(doc: Document, pieces: list[str]) -> None:
 def ingest_document(user, title: str, text: str) -> Document:
     """Index a document inside the caller's request."""
     title, pieces = _prepare(title, text)
-    doc = Document.objects.create(owner=user, title=title)
+    doc = Document.objects.create(owner=user, title=title, source_text=_clean(text), reindexable=True)
     try:
         _store_chunks(doc, pieces)
     except Exception:
@@ -99,7 +106,7 @@ def _pool() -> ThreadPoolExecutor:
 
 def _index_in_background(doc_id: int, pieces: list[str], user_id: int) -> None:
     try:
-        doc = Document.objects.filter(pk=doc_id).first()
+        doc = Document.objects.defer("source_text").filter(pk=doc_id).first()
         if doc is None:  # deleted while it waited
             return
         _store_chunks(doc, pieces)
@@ -110,7 +117,11 @@ def _index_in_background(doc_id: int, pieces: list[str], user_id: int) -> None:
         retrieval.prime(get_user_model().objects.get(pk=user_id))
     except Exception as exc:
         log.exception("indexing document %s failed", doc_id)
-        Document.objects.filter(pk=doc_id).update(status="failed", error=f"Indexing failed: {exc}"[:255])
+        message = f"Indexing failed: {exc}"[:255]
+        # a first indexing that failed leaves nothing to search: "failed". A re-index that failed leaves the old
+        # passages in place: the document stays "ready", with the reason attached.
+        has_chunks = Chunk.objects.filter(document_id=doc_id).exists()
+        Document.objects.filter(pk=doc_id).update(status="ready" if has_chunks else "failed", error=message)
     finally:
         connection.close()  # this thread's own database connection
 
@@ -124,6 +135,23 @@ def start_ingest(user, title: str, text: str) -> Document:
     if not settings.INGEST_ASYNC:
         return ingest_document(user, title, text)
     title, pieces = _prepare(title, text)
-    doc = Document.objects.create(owner=user, title=title, status="processing")
+    doc = Document.objects.create(
+        owner=user, title=title, status="processing", source_text=_clean(text), reindexable=True,
+        processing_since=timezone.now(),
+    )
     _pool().submit(_index_in_background, doc.pk, pieces, user.pk)
+    return doc
+
+
+def start_reindex(doc: Document) -> Document:
+    """Split and embed a document's stored text again with the current settings (chunk size, embedding model)."""
+    if not doc.reindexable or not doc.source_text:
+        raise IngestError("This document was added before re-indexing was supported. Upload it again to re-index it.")
+    _, pieces = _prepare(doc.title, doc.source_text)
+    if not settings.INGEST_ASYNC:
+        _store_chunks(doc, pieces)
+        return doc
+    Document.objects.filter(pk=doc.pk).update(status="processing", error="", processing_since=timezone.now())
+    doc.status, doc.error = "processing", ""
+    _pool().submit(_index_in_background, doc.pk, pieces, doc.owner_id)
     return doc

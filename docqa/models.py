@@ -32,6 +32,11 @@ class Document(models.Model):
     # "processing": being split and embedded in the background; searchable only once "ready"
     status = models.CharField(max_length=12, default="ready")
     error = models.CharField(max_length=255, blank=True, default="")
+    # the text as uploaded, kept so the document can be re-indexed (new chunk size, new model) without re-uploading;
+    # documents added before this existed have none and cannot be re-indexed
+    source_text = models.TextField(blank=True, default="")
+    reindexable = models.BooleanField(default=False)
+    processing_since = models.DateTimeField(null=True, blank=True)  # when indexing (or re-indexing) last started
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

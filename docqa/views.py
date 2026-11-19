@@ -3,10 +3,11 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.http import StreamingHttpResponse
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -18,12 +19,13 @@ from rest_framework.views import APIView
 from docqa.models import Document
 from docqa.serializers import (
     AskSerializer,
+    DocumentRenameSerializer,
     DocumentSerializer,
     DocumentUploadSerializer,
     RegisterSerializer,
 )
 from docqa.services import llm, retrieval, routing, usage
-from docqa.services.ingest import IngestError, extract_text, start_ingest
+from docqa.services.ingest import IngestError, extract_text, start_ingest, start_reindex
 
 
 class AuthRateThrottle(AnonRateThrottle):
@@ -71,6 +73,7 @@ class DocumentViewSet(
         # explicit order: Meta.ordering is ignored once a query is grouped by an annotation
         return (
             Document.objects.filter(owner=self.request.user)
+            .defer("source_text")  # can be megabytes per document, and no endpoint returns it
             .annotate(chunk_total=Count("chunks"))
             .order_by("-created_at", "-id")
         )
@@ -78,10 +81,39 @@ class DocumentViewSet(
     def list(self, request, *args, **kwargs):
         # indexing that never finished (the server restarted mid-way) must not show "processing" forever
         cutoff = timezone.now() - timezone.timedelta(seconds=settings.INGEST_TIMEOUT_SECONDS)
-        Document.objects.filter(owner=request.user, status="processing", created_at__lt=cutoff).update(
-            status="failed", error="Indexing was interrupted. Delete this document and upload it again."
+        stuck = Document.objects.filter(owner=request.user, status="processing").filter(
+            Q(processing_since__lt=cutoff) | Q(processing_since__isnull=True, created_at__lt=cutoff)
         )
+        for doc in stuck:
+            if doc.chunks.exists():  # a re-index that never finished: the old passages are still good
+                stuck.filter(pk=doc.pk).update(status="ready", error="Re-indexing was interrupted.")
+            else:
+                stuck.filter(pk=doc.pk).update(
+                    status="failed", error="Indexing was interrupted. Delete this document and upload it again."
+                )
         return super().list(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """PATCH {title}: rename a document (the only field that can change)."""
+        doc = self.get_object()
+        ser = DocumentRenameSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        doc.title = ser.validated_data["title"].replace(chr(0), "").strip()[:255] or doc.title
+        doc.save(update_fields=["title"])
+        return Response(DocumentSerializer(doc).data)
+
+    @action(detail=True, methods=["post"])
+    def reindex(self, request, pk=None):
+        """Split and embed the stored text again with the current settings, without uploading it again."""
+        doc = self.get_object()
+        if doc.status == "processing":
+            return Response({"detail": "This document is already being indexed."}, status=status.HTTP_409_CONFLICT)
+        try:
+            doc = start_reindex(doc)
+        except IngestError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        code = status.HTTP_202_ACCEPTED if doc.status == "processing" else status.HTTP_200_OK
+        return Response(DocumentSerializer(doc).data, status=code)
 
     def create(self, request):
         limit = settings.MAX_DOCUMENTS_PER_USER
