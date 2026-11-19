@@ -3,8 +3,9 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
-COPY requirements.txt requirements-ml.txt ./
-RUN pip install --no-cache-dir -r requirements-ml.txt
+# the pinned versions (requirements-ml.lock) so a rebuild gives the same image; see README to update them
+COPY requirements-ml.lock ./
+RUN pip install --no-cache-dir -r requirements-ml.lock
 
 # Download the search model while building, so the first start needs no network and is not slow
 ENV FASTEMBED_CACHE_PATH=/app/.cache/fastembed

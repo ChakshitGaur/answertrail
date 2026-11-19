@@ -1,0 +1,8 @@
+[run]
+omit =
+    docqa/migrations/*
+    docqa/management/*
+
+[report]
+# measured at 90% with the neural-model and PostgreSQL tests skipped; this stops it quietly sliding
+fail_under = 85

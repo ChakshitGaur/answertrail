@@ -4,12 +4,12 @@ import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
-from django.utils import timezone
 from django.http import StreamingHttpResponse
+from django.utils import timezone
 from rest_framework import mixins, status, viewsets
-from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -207,7 +207,7 @@ class AskStreamView(APIView):
                 yield _sse("done", {})
                 return
             passages = plan.passages
-            for attempt in (1, 2):
+            for _attempt in (1, 2):
                 try:
                     for piece in llm.stream_answer(data["question"], passages, data["history"], plan.can_decline):
                         yield _sse("token", {"t": piece})

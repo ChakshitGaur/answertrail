@@ -1,0 +1,9 @@
+line-length = 120
+extend-exclude = ["docqa/migrations", "staticfiles"]
+
+[lint]
+# pyflakes + pycodestyle errors + import order + likely bugs (flake8-bugbear)
+select = ["E", "F", "I", "B"]
+# long lines were never enforced here (and a mass reflow would bury real changes); zip(strict=) is noise for
+# our equal-length zips
+ignore = ["E501", "B905"]

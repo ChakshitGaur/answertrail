@@ -49,7 +49,6 @@ def test_general_mode_ignores_the_documents_and_answers_like_an_assistant(client
 
 
 def test_general_mode_carries_the_conversation(client, llm_settings):
-    ask_stream(client, "And in one line?", mode="general", history=HISTORY).streaming_content
     list(ask_stream(client, "And in one line?", mode="general", history=HISTORY).streaming_content)
     messages = asked(llm_settings)[-1]
     assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]

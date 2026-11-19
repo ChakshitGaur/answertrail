@@ -28,9 +28,9 @@ def isolated_from_local_config(settings, monkeypatch):
     settings.LLM_REASONING_EFFORT = settings.LLM_REASONING_EFFORT_GENERAL = ""
     settings.WARMUP_EMBEDDINGS = False
     settings.INGEST_ASYNC = False  # tests index inline; the background path has its own tests
-    from docqa.services import llm, retrieval
-
     from django.core.cache import cache
+
+    from docqa.services import llm, retrieval
 
     retrieval.clear_cache()  # every test gets a fresh database whose ids start over, so never reuse a corpus
     llm._COOLING.clear()  # a model rate-limited in one test must not be skipped in the next
@@ -56,7 +56,6 @@ def fake_server():
 @pytest.fixture
 def llm_settings(settings, fake_server, monkeypatch):
     """Point the app at the fake server; returns it so tests can inspect received requests."""
-    from docqa.services import llm
 
     settings.LLM_BASE_URL = f"http://127.0.0.1:{fake_server.server_port}/v1"
     settings.LLM_API_KEY = "test-key"
